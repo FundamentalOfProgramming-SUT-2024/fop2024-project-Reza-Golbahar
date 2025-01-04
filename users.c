@@ -75,6 +75,11 @@ bool validate_email(const char *email) {
 // User management functions
 struct UserManager* create_user_manager(void) {
     struct UserManager* manager = malloc(sizeof(struct UserManager));
+    if (manager == NULL) {
+        endwin();
+        fprintf(stderr, "Failed to allocate memory for user manager\n");
+        exit(1);
+    }
     if (manager != NULL) {
         manager->user_count = 0;
         manager->current_user = NULL;

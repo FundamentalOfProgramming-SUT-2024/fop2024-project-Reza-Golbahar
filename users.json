@@ -9,6 +9,12 @@
     "username": "Reza",
     "password": "Lord453",
     "email": "s@g.c",
-    "score": "0"
+    "score": "0",
+  },
+  {
+    "username": "Ali",
+    "password": "Lord453",
+    "email": "s@z.c",
+    "score": "20"
   }
 ]

@@ -6,7 +6,6 @@
 #include "users.h"
 #include "menu.h"
 
-
 // Initialize ncurses
 bool init_ncurses(void) {
     initscr();
@@ -19,9 +18,9 @@ bool init_ncurses(void) {
     cbreak();
     noecho();
     keypad(stdscr, TRUE);
+    curs_set(0);  // Hide cursor
     return true;
 }
-
 
 int main() {
     // Initialize ncurses and the user manager
@@ -48,48 +47,76 @@ int main() {
     while (playing) {
         clear();
         refresh();
-        printw("Welcome %s!\n", manager->current_user ? manager->current_user->username : "Guest");
-        printw("1- Press [n] to create New Game.\n");
-        printw("2- Press [l] to load the Last Game.\n");
-        printw("3- Press [b] to show the Scoreboard.\n");
-        printw("4- Press [s] to go to Settings.\n");
-        printw("5- Press [p] to go to Profile Menu.\n");
-        printw("6- Press [q] to quit.\n");
+        
+        // Print header
+        mvprintw(0, 0, "Welcome %s!", manager->current_user ? manager->current_user->username : "Guest");
+        
+        // Print menu options
+        mvprintw(2, 0, "Main Menu:");
+        mvprintw(4, 0, "1- Press [n] to create New Game.");
+        mvprintw(5, 0, "2- Press [l] to load the Last Game.");
+        mvprintw(6, 0, "3- Press [b] to show the Scoreboard.");
+        mvprintw(7, 0, "4- Press [s] to go to Settings.");
+        mvprintw(8, 0, "5- Press [p] to go to Profile Menu.");
+        mvprintw(9, 0, "6- Press [q] to quit.");
+        
+        if (manager->current_user == NULL) {
+            mvprintw(11, 0, "Note: Some features are not available for guests.");
+        }
+        
         refresh();
 
         char choice = getch();
+        clear();  // Clear screen before handling choice
+
         switch(choice) {
             case 'n':
+                // Start new game
+                clear();
+                refresh();
                 game_menu(manager);
                 break;
+
             case 'l':
                 if (manager->current_user) {
-                    printw("\nLoad game functionality not implemented yet.");
-                    refresh();
-                    getch();
+                    mvprintw(0, 0, "Load game functionality not implemented yet.");
                 } else {
-                    printw("\nGuests cannot load games.");
-                    refresh();
-                    getch();
+                    mvprintw(0, 0, "Guests cannot load games.");
                 }
+                refresh();
+                getch();
                 break;
+
             case 'b':
                 print_scoreboard(manager);
                 break;
+
             case 's':
                 settings(manager);
                 break;
+
             case 'p':
                 if (manager->current_user) {
                     print_profile(manager);
                 } else {
-                    printw("\nGuests cannot view profile.");
+                    mvprintw(0, 0, "Guests cannot view profile.");
                     refresh();
                     getch();
                 }
                 break;
+
             case 'q':
-                playing = false;
+                mvprintw(0, 0, "Are you sure you want to quit? (y/n)");
+                refresh();
+                if (getch() == 'y') {
+                    playing = false;
+                }
+                break;
+
+            default:
+                mvprintw(0, 0, "Invalid choice. Press any key to continue...");
+                refresh();
+                getch();
                 break;
         }
     }
