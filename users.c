@@ -181,7 +181,9 @@ void print_users(struct UserManager* manager) {
 
 void print_scoreboard(struct UserManager* manager) {
     if (manager->user_count == 0) {
-        printw("No users found.\n");
+        mvprintw(0, 0, "No users found.\n");
+        refresh();
+        getch();
         return;
     }
 
@@ -200,28 +202,104 @@ void print_scoreboard(struct UserManager* manager) {
         }
     }
 
-    // Print scoreboard
-    clear();
-    mvprintw(0, 0, "SCOREBOARD");
-    mvprintw(2, 0, "Rank");
-    mvprintw(2, 10, "Username");
-    mvprintw(2, 35, "Score");
-    
-    // Print horizontal line
-    mvprintw(3, 0, "----------------------------------------");
+    // Initialize colors
+    start_color();
+    init_pair(1, COLOR_YELLOW, COLOR_BLACK);  // Gold (1st place)
+    init_pair(2, COLOR_WHITE, COLOR_BLACK);   // Silver (2nd place)
+    init_pair(3, COLOR_RED, COLOR_BLACK);     // Bronze (3rd place)
+    init_pair(4, COLOR_GREEN, COLOR_BLACK);   // Current user
+    init_pair(5, COLOR_CYAN, COLOR_BLACK);    // Headers
 
-    for (int i = 0; i < manager->user_count; i++) {
-        mvprintw(i + 4, 0, "%d", i + 1);
-        mvprintw(i + 4, 10, "%s", sorted_users[i].username);
-        mvprintw(i + 4, 35, "%d", sorted_users[i].score);
+    // Variables for pagination
+    int current_page = 0;
+    int total_pages = (manager->user_count + USERS_PER_PAGE - 1) / USERS_PER_PAGE;
+    bool running = true;
+    time_t current_time = time(NULL);
+
+    while (running) {
+        clear();
+
+        // Print header with current time
+        attron(COLOR_PAIR(5) | A_BOLD);
+        mvprintw(0, 0, "SCOREBOARD - Page %d/%d", current_page + 1, total_pages);
+        mvprintw(0, 40, "Current Time: 2025-01-04 18:07:37");
+        
+        // Print column headers
+        mvprintw(2, 0,  "Rank");
+        mvprintw(2, 8,  "Username");
+        mvprintw(2, 25, "Score");
+        mvprintw(2, 35, "Gold");
+        mvprintw(2, 45, "Games");
+        mvprintw(2, 55, "Experience");
+        mvprintw(2, 70, "Title");
+        attroff(COLOR_PAIR(5) | A_BOLD);
+
+        // Print horizontal line
+        mvprintw(3, 0, "--------------------------------------------------------------------------------");
+
+        // Calculate range for current page
+        int start_idx = current_page * USERS_PER_PAGE;
+        int end_idx = MIN(start_idx + USERS_PER_PAGE, manager->user_count);
+
+        // Print users
+        for (int i = start_idx; i < end_idx; i++) {
+            int row = i - start_idx + 4;
+            struct User* user = &sorted_users[i];
+            
+            // Calculate experience days
+            int experience_days = (int)((current_time - user->first_game_time) / (24 * 3600));
+
+            // Set appropriate color and style
+            if (i < 3) {
+                // Top 3 players get special colors and medals
+                attron(COLOR_PAIR(i + 1) | A_BOLD);
+                const char* medals[] = {"🏆", "🥈", "🥉"};
+                const char* titles[] = {"GOAT", "Legend", "Champion"};
+                mvprintw(row, 0, "%s %d", medals[i], i + 1);
+                mvprintw(row, 70, "%s", titles[i]);
+            } else {
+                // Normal ranking
+                mvprintw(row, 0, "%d", i + 1);
+            }
+
+            // Highlight current user's row
+            if (manager->current_user && 
+                strcmp(user->username, manager->current_user->username) == 0) {
+                attron(COLOR_PAIR(4) | A_BOLD);
+                mvprintw(row, 6, "►");
+            }
+
+            // Print user information
+            mvprintw(row, 8,  "%s", user->username);
+            mvprintw(row, 25, "%d", user->score);
+            mvprintw(row, 35, "%d", user->gold);
+            mvprintw(row, 45, "%d", user->games_completed);
+            mvprintw(row, 55, "%d days", experience_days);
+
+            // Reset attributes
+            attroff(COLOR_PAIR(1) | COLOR_PAIR(2) | COLOR_PAIR(3) | COLOR_PAIR(4) | A_BOLD);
+        }
+
+        // Print navigation instructions
+        mvprintw(USERS_PER_PAGE + 6, 0, "Navigation: 'n' - Next Page, 'p' - Previous Page, 'q' - Quit");
+        refresh();
+
+        // Handle input
+        int ch = getch();
+        switch (ch) {
+            case 'n':
+                if (current_page < total_pages - 1) current_page++;
+                break;
+            case 'p':
+                if (current_page > 0) current_page--;
+                break;
+            case 'q':
+                running = false;
+                break;
+        }
     }
-
-    // Print bottom line
-    mvprintw(manager->user_count + 4, 0, "----------------------------------------");
-    mvprintw(manager->user_count + 6, 0, "Press any key to continue...");
-    refresh();
-    getch();
 }
+
 
 void print_profile(struct UserManager* manager) {
     if (manager->current_user == NULL) {

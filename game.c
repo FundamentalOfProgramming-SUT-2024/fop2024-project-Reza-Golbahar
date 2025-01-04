@@ -988,3 +988,42 @@ struct Room* findNearestRoom(struct Map* game_map, struct Room* room) {
     
     return nearest;
 }
+
+void add_game_message(struct MessageQueue* queue, const char* text, int color_pair) {
+    if (queue->count >= MAX_MESSAGES) {
+        // Shift messages up
+        for (int i = 0; i < MAX_MESSAGES - 1; i++) {
+            queue->messages[i] = queue->messages[i + 1];
+        }
+        queue->count--;
+    }
+    
+    struct GameMessage* msg = &queue->messages[queue->count];
+    strncpy(msg->text, text, MESSAGE_LENGTH - 1);
+    msg->text[MESSAGE_LENGTH - 1] = '\0';
+    msg->time_to_live = 60;  // Show for ~2 seconds at 30 fps
+    msg->color_pair = color_pair;
+    queue->count++;
+}
+
+void update_messages(struct MessageQueue* queue) {
+    for (int i = 0; i < queue->count; i++) {
+        queue->messages[i].time_to_live--;
+        if (queue->messages[i].time_to_live <= 0) {
+            // Remove this message
+            for (int j = i; j < queue->count - 1; j++) {
+                queue->messages[j] = queue->messages[j + 1];
+            }
+            queue->count--;
+            i--;
+        }
+    }
+}
+
+void draw_messages(struct MessageQueue* queue, int start_y, int start_x) {
+    for (int i = 0; i < queue->count; i++) {
+        attron(COLOR_PAIR(queue->messages[i].color_pair));
+        mvprintw(start_y + i, start_x, "%s", queue->messages[i].text);
+        attroff(COLOR_PAIR(queue->messages[i].color_pair));
+    }
+}

@@ -16,6 +16,9 @@
 #define DOOR '+'
 #define WALL '|'
 
+#define MAX_MESSAGES 5
+#define MESSAGE_LENGTH 100
+
 // Map symbols
 #define FLOOR '.'
 #define WALL_HORIZONTAL '_'
@@ -63,6 +66,18 @@ struct SavedGame {
     time_t save_time;
 };
 
+struct GameMessage {
+    char text[MESSAGE_LENGTH];
+    int time_to_live;  // How many frames to show the message
+    int color_pair;
+};
+
+struct MessageQueue {
+    struct GameMessage messages[MAX_MESSAGES];
+    int count;
+};
+
+
 // Function declarations
 void print_point(struct Point p, const char* type);
 void connect_doors(struct Map* game_map, struct Point door1, struct Point door2);
@@ -92,6 +107,9 @@ extern void settings(struct UserManager* manager);
 bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game);
 void save_current_game(struct UserManager* manager, struct Map* game_map, 
                       struct Point* character_location, int score);
+void add_game_message(struct MessageQueue* queue, const char* text, int color_pair);
+void update_messages(struct MessageQueue* queue);
+void draw_messages(struct MessageQueue* queue, int start_y, int start_x);
 
 
 #endif

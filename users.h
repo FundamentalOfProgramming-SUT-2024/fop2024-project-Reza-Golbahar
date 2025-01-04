@@ -1,16 +1,25 @@
 #ifndef USERS_H
 #define USERS_H
 
+#include <time.h>
 #include <stdbool.h>
 
 #define MAX_USERS 100
 #define MAX_STRING_LEN 100
+#define USERS_PER_PAGE 10
+
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
+
 
 struct User {
     char username[MAX_STRING_LEN];
     char password[MAX_STRING_LEN];
     char email[MAX_STRING_LEN];
     int score;
+    int gold;
+    int games_completed;
+    time_t first_game_time;
+    time_t last_game_time;
 };
 
 struct UserManager {
@@ -19,6 +28,7 @@ struct UserManager {
     int user_count;
     struct User* current_user;
 };
+
 
 // Function declarations
 struct UserManager* create_user_manager(void);
