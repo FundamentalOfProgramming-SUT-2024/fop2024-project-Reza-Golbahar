@@ -207,8 +207,6 @@ int users_menu(struct UserManager* manager) {
 }
 
 
-
-
 bool entering_menu(struct UserManager* manager, int selected_index) {
     while (1) {
         clear();
@@ -288,46 +286,56 @@ void settings(struct UserManager* manager) {
     clear();
     refresh();
 
-    printw("Settings\n");
-    printw("You want to modify the settings? Press [q] to quit and Press Any other key to continue");
-    printw("Default Values: Difficulty = 1; Song = Venom; Color: White");
-    char command;
-    command = getchar();
-    if (command == 'q')
-        return;
+    mvprintw(0, 0, "Settings");
+    mvprintw(2, 0, "Current values:");
+    mvprintw(3, 0, "Difficulty = 1");
+    mvprintw(4, 0, "Song = Venom");
+    mvprintw(5, 0, "Color = White");
+    
+    mvprintw(7, 0, "Modify settings? (y/n)");
+    refresh();
+    
+    if (getch() != 'y') return;
 
-    int difficulty, song;
+    int difficulty;
     char color[20];
-    printw("Difficulty [1-10]: ");
+    int song;
+
+    echo();
+    mvprintw(9, 0, "Difficulty [1-10]: ");
     scanw("%d", &difficulty);
 
-    printw("\nCharacter_color: [White - Red - Blue - Green]: ");
+    mvprintw(10, 0, "Character color [White/Red/Blue/Green]: ");
     scanw("%s", color);
 
-    printw("\nSong: [1-Venom, 2-Rap God, 3-Hello]:(enter a number 1-3) ");
-    scanf("%d", &song);
+    mvprintw(11, 0, "Song [1-Venom, 2-Rap God, 3-Hello]: ");
+    scanw("%d", &song);
+    noecho();
 
-    // Save settings for current user if logged in
-    if (manager->current_user != NULL) {
-        FILE* fptr = fopen("load.json", "w");
-        if (fptr == NULL) {
-            handle_file_error("open settings");
-            return;
+    // Save settings for current user
+    if (manager->current_user) {
+        FILE* file = fopen("settings.json", "w");
+        if (file) {
+            fprintf(file, "{\n");
+            fprintf(file, "  \"username\": \"%s\",\n", manager->current_user->username);
+            fprintf(file, "  \"difficulty\": %d,\n", difficulty);
+            fprintf(file, "  \"color\": \"%s\",\n", color);
+            fprintf(file, "  \"song\": %d\n", song);
+            fprintf(file, "}\n");
+            fclose(file);
+            
+            mvprintw(13, 0, "Settings saved successfully!");
+        } else {
+            mvprintw(13, 0, "Error saving settings!");
         }
-        
-        fprintf(fptr, "[\n");
-        fprintf(fptr, "  \"Difficulty\": %d,\n", difficulty);
-        fprintf(fptr, "  \"Song\": %d,\n", song);
-        fprintf(fptr, "  \"Color\": \"%s\"\n", color);
-        fprintf(fptr, "]");
-        
-        fclose(fptr);
     } else {
-        printw("\nSettings won't be saved for guest users.");
-        refresh();
-        getch();
+        mvprintw(13, 0, "Settings won't be saved for guest users.");
     }
+    
+    refresh();
+    getch();
 }
+
 
 void pre_game_menu(struct UserManager* manager) {
     char command;

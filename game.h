@@ -13,6 +13,8 @@
 #define MIN_ROOM_DISTANCE 2
 #define WINDOW_CHANCE 20
 #define MAX_DOORS 4
+#define DOOR '+'
+#define WALL '|'
 
 // Map symbols
 #define FLOOR '.'
@@ -53,6 +55,14 @@ struct Map {
     struct Point initial_position;
 };
 
+struct SavedGame {
+    char name[MAX_STRING_LEN];
+    struct Map game_map;
+    struct Point character_location;
+    int score;
+    time_t save_time;
+};
+
 // Function declarations
 void print_point(struct Point p, const char* type);
 void connect_doors(struct Map* game_map, struct Point door1, struct Point door2);
@@ -76,5 +86,12 @@ bool areRoomsConnectable(struct Room* room1, struct Room* room2);
 void create_door(struct Map* game_map, struct Room* room1, struct Room* room2);
 struct Room* findNearestRoom(struct Map* game_map, struct Room* room);
 bool hasConnectingDoor(struct Map* game_map, struct Room* room1, struct Room* room2);
+void play_game(struct UserManager* manager, struct Map* game_map, 
+               struct Point* character_location, int initial_score);
+extern void settings(struct UserManager* manager);
+bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game);
+void save_current_game(struct UserManager* manager, struct Map* game_map, 
+                      struct Point* character_location, int score);
+
 
 #endif

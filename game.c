@@ -1,10 +1,11 @@
- #include <ncurses.h>
+#include <ncurses.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include "users.h"  // Add this before game.h
+#include <limits.h>
+#include <dirent.h>
 #include "game.h"
-#include <limits.h>  // For INT_MAX
+#include "users.h"
 
 #define DOOR '+'
 #define WINDOW '*'
@@ -27,29 +28,250 @@
 #include "users.h"  // Add this before game.h
 #include "game.h"
 
-// ... rest of your existing functions ...
+// In game.c, update the save_current_game and load_saved_game functions:
+
+void save_current_game(struct UserManager* manager, struct Map* game_map, 
+                      struct Point* character_location, int score) {
+    if (!manager->current_user) {
+        mvprintw(0, 0, "Cannot save game as guest user.");
+        refresh();
+        getch();
+        return;
+    }
+
+    char filename[MAX_STRING_LEN * 3];  // Increased buffer size
+    char save_name[MAX_STRING_LEN];
+
+    // Get save name from user
+    clear();
+    echo();
+    mvprintw(0, 0, "Enter name for this save (max 50 chars): ");
+    refresh();
+    getnstr(save_name, 50);  // Limit input length
+    noecho();
+
+    // Ensure save_name is null-terminated
+    save_name[50] = '\0';
+
+    // Create filename using username and save name
+    if (snprintf(filename, sizeof(filename), "saves/%s_%s.sav", 
+                manager->current_user->username, save_name) >= sizeof(filename)) {
+        mvprintw(2, 0, "Error: Filename too long.");
+        refresh();
+        getch();
+        return;
+    }
+
+    FILE* file = fopen(filename, "wb");
+    if (!file) {
+        mvprintw(2, 0, "Error: Could not create save file.");
+        refresh();
+        getch();
+        return;
+    }
+
+    // Create save game structure
+    struct SavedGame save = {
+        .game_map = *game_map,
+        .character_location = *character_location,
+        .score = score,
+        .save_time = time(NULL)
+    };
+    strncpy(save.name, save_name, MAX_STRING_LEN - 1);
+    save.name[MAX_STRING_LEN - 1] = '\0';  // Ensure null termination
+
+    // Write save data
+    fwrite(&save, sizeof(struct SavedGame), 1, file);
+    fclose(file);
+
+    mvprintw(2, 0, "Game saved successfully!");
+    refresh();
+    getch();
+}
+
+bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game) {
+    if (!manager->current_user) {
+        mvprintw(0, 0, "Cannot load game as guest user.");
+        refresh();
+        getch();
+        return false;
+    }
+
+    // List available saves
+    clear();
+    mvprintw(0, 0, "Available saved games:");
+    
+    char pattern[MAX_STRING_LEN * 3];  // Increased buffer size
+    if (snprintf(pattern, sizeof(pattern), "saves/%s_*.sav", 
+                manager->current_user->username) >= sizeof(pattern)) {
+        mvprintw(2, 0, "Error: Pattern string too long.");
+        refresh();
+        getch();
+        return false;
+    }
+    
+    // List save files
+    DIR* dir = opendir("saves");
+    struct dirent* entry;
+    int count = 0;
+    
+    if (dir) {
+        while ((entry = readdir(dir)) != NULL) {
+            if (strstr(entry->d_name, manager->current_user->username) == entry->d_name) {
+                char* save_name = strchr(entry->d_name, '_');
+                if (save_name) {
+                    save_name++; // Skip the underscore
+                    char* dot = strrchr(save_name, '.');
+                    if (dot) *dot = '\0'; // Remove .sav extension
+                    mvprintw(count + 2, 0, "%d. %s", count + 1, save_name);
+                    count++;
+                }
+            }
+        }
+        closedir(dir);
+    }
+
+    if (count == 0) {
+        mvprintw(2, 0, "No saved games found.");
+        refresh();
+        getch();
+        return false;
+    }
+
+    // Get user choice
+    mvprintw(count + 3, 0, "Enter save name to load (or 'q' to cancel): ");
+    refresh();
+    
+    char save_name[MAX_STRING_LEN];
+    echo();
+    getnstr(save_name, 50);  // Limit input length
+    noecho();
+
+    if (save_name[0] == 'q') return false;
+
+    // Ensure save_name is null-terminated
+    save_name[50] = '\0';
+
+    // Construct filename
+    char filename[MAX_STRING_LEN * 3];  // Increased buffer size
+    if (snprintf(filename, sizeof(filename), "saves/%s_%s.sav", 
+                manager->current_user->username, save_name) >= sizeof(filename)) {
+        mvprintw(count + 5, 0, "Error: Filename too long.");
+        refresh();
+        getch();
+        return false;
+    }
+
+    // Try to open save file
+    FILE* file = fopen(filename, "rb");
+    if (!file) {
+        mvprintw(count + 5, 0, "Error: Could not find save file.");
+        refresh();
+        getch();
+        return false;
+    }
+
+    // Read save data
+    fread(saved_game, sizeof(struct SavedGame), 1, file);
+    fclose(file);
+    return true;
+}
 
 void game_menu(struct UserManager* manager) {
+    while (1) {
+        clear();
+        mvprintw(0, 0, "Game Menu");
+        mvprintw(2, 0, "1. New Game (n)");
+        mvprintw(3, 0, "2. Load Game (l)");
+        mvprintw(4, 0, "3. View Scoreboard (s)");
+        mvprintw(5, 0, "4. Settings (t)");
+        mvprintw(6, 0, "5. Profile (p)");
+        mvprintw(7, 0, "6. Back to Main Menu (q)");
+        
+        if (manager->current_user == NULL) {
+            mvprintw(9, 0, "Note: Save/Load features unavailable for guest users");
+        }
+        
+        refresh();
+
+        int choice = getch();
+        
+        switch (choice) {
+            case 'n': {
+                // Start new game
+                struct Map game_map = generate_map();
+                struct Point character_location = game_map.initial_position;
+                play_game(manager, &game_map, &character_location, 0);
+                break;
+            }
+            
+            case 'l': {
+                if (manager->current_user) {
+                    struct SavedGame saved_game;
+                    if (load_saved_game(manager, &saved_game)) {
+                        play_game(manager, &saved_game.game_map, 
+                                &saved_game.character_location, saved_game.score);
+                    }
+                } else {
+                    mvprintw(11, 0, "Guest users cannot load games");
+                    refresh();
+                    getch();
+                }
+                break;
+            }
+            
+            case 's':
+                print_scoreboard(manager);
+                break;
+                
+            case 't':
+                settings(manager);
+                break;
+                
+            case 'p':
+                if (manager->current_user) {
+                    print_profile(manager);
+                } else {
+                    mvprintw(11, 0, "Guest users cannot view profile");
+                    refresh();
+                    getch();
+                }
+                break;
+                
+            case 'q':
+                return;
+        }
+    }
+}
+
+void play_game(struct UserManager* manager, struct Map* game_map, 
+               struct Point* character_location, int initial_score) {
+    time_t raw_time;
+    struct tm* timeinfo;
+    char time_str[80];
+    
+    time(&raw_time);
+    timeinfo = localtime(&raw_time);
+    strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", timeinfo);
+
+
     // Initialize color pairs for game elements
     start_color();
     init_pair(1, COLOR_WHITE, COLOR_BLACK);   // Normal text/walls
     init_pair(2, COLOR_YELLOW, COLOR_BLACK);  // Food
     init_pair(3, COLOR_GREEN, COLOR_BLACK);   // Player
     init_pair(4, COLOR_BLUE, COLOR_BLACK);    // Doors/Windows
-    init_pair(5, COLOR_MAGENTA, COLOR_BLACK); // Score/UI text
+    init_pair(5, COLOR_MAGENTA, COLOR_BLACK); // UI text
+    init_pair(6, COLOR_RED, COLOR_BLACK);     // Messages
 
     // Initialize game state
-    struct Map game_map = generate_map();
-    struct Point character_location = game_map.initial_position;
-    int score = 0;
+    int score = initial_score;
     bool game_running = true;
     time_t start_time = time(NULL);
-
-    // Static array to track visited areas
     static char visited[MAP_HEIGHT][MAP_WIDTH] = {0};
-    
-    // Mark starting position as visited
-    visited[character_location.y][character_location.x] = 1;
+
+    // Mark initial position as visited
+    visited[character_location->y][character_location->x] = 1;
 
     // Game loop
     while (game_running) {
@@ -57,85 +279,109 @@ void game_menu(struct UserManager* manager) {
         clear();
 
         // Update visibility and draw map
-        sight_range(&game_map, &character_location);
+        sight_range(game_map, character_location);
 
         // Draw UI elements
         attron(COLOR_PAIR(5));
-        // Display game stats on the right side of the map
-        mvprintw(0, MAP_WIDTH + 2, "Player: %s", 
+        // Display game stats
+        mvprintw(0, MAP_WIDTH + 2, "Current Date: 2025-01-04");
+        mvprintw(0, MAP_WIDTH + 2, "Current Time: %s", time_str);
+        mvprintw(1, MAP_WIDTH + 2, "Player: %s", 
                 manager->current_user ? manager->current_user->username : "Guest");
-        mvprintw(1, MAP_WIDTH + 2, "Score: %d", score);
+        mvprintw(2, MAP_WIDTH + 2, "Score: %d", score);
 
         // Display elapsed time
         time_t current_time = time(NULL);
         int elapsed_time = (int)(current_time - start_time);
         int minutes = elapsed_time / 60;
         int seconds = elapsed_time % 60;
-        mvprintw(2, MAP_WIDTH + 2, "Time: %02d:%02d", minutes, seconds);
+        mvprintw(3, MAP_WIDTH + 2, "Time: %02d:%02d", minutes, seconds);
 
         // Display controls
-        mvprintw(4, MAP_WIDTH + 2, "Controls:");
-        mvprintw(5, MAP_WIDTH + 2, "Movement:");
-        mvprintw(6, MAP_WIDTH + 2, "  h - Left");
-        mvprintw(7, MAP_WIDTH + 2, "  j - Down");
-        mvprintw(8, MAP_WIDTH + 2, "  k - Up");
-        mvprintw(9, MAP_WIDTH + 2, "  l - Right");
-        mvprintw(10, MAP_WIDTH + 2, "Diagonal:");
-        mvprintw(11, MAP_WIDTH + 2, "  y - Up-Left");
-        mvprintw(12, MAP_WIDTH + 2, "  u - Up-Right");
-        mvprintw(13, MAP_WIDTH + 2, "  b - Down-Left");
-        mvprintw(14, MAP_WIDTH + 2, "  n - Down-Right");
-        mvprintw(16, MAP_WIDTH + 2, "q - Quit Game");
+        mvprintw(5, MAP_WIDTH + 2, "Controls:");
+        mvprintw(6, MAP_WIDTH + 2, "Movement:");
+        mvprintw(7, MAP_WIDTH + 2, "  h - Left");
+        mvprintw(8, MAP_WIDTH + 2, "  j - Down");
+        mvprintw(9, MAP_WIDTH + 2, "  k - Up");
+        mvprintw(10, MAP_WIDTH + 2, "  l - Right");
+        mvprintw(11, MAP_WIDTH + 2, "Diagonal:");
+        mvprintw(12, MAP_WIDTH + 2, "  y - Up-Left");
+        mvprintw(13, MAP_WIDTH + 2, "  u - Up-Right");
+        mvprintw(14, MAP_WIDTH + 2, "  b - Down-Left");
+        mvprintw(15, MAP_WIDTH + 2, "  n - Down-Right");
+        
+        // Game options
+        mvprintw(17, MAP_WIDTH + 2, "Options:");
+        mvprintw(18, MAP_WIDTH + 2, "S - Save Game");
+        mvprintw(19, MAP_WIDTH + 2, "q - Quit Game");
+
+        if (manager->current_user == NULL) {
+            attron(COLOR_PAIR(6));
+            mvprintw(21, MAP_WIDTH + 2, "Note: Saving unavailable");
+            mvprintw(22, MAP_WIDTH + 2, "for guest users");
+            attroff(COLOR_PAIR(6));
+        }
         attroff(COLOR_PAIR(5));
 
         // Draw the player character
         attron(COLOR_PAIR(3));
-        mvaddch(character_location.y, character_location.x, '@');
+        mvaddch(character_location->y, character_location->x, '@');
         attroff(COLOR_PAIR(3));
 
         refresh();
 
         // Get player input
         int key = getch();
-        struct Point old_location = character_location;
+        struct Point old_location = *character_location;
 
         // Handle input
         switch(key) {
+            case 'S': // Save game
+                if (manager->current_user) {
+                    save_current_game(manager, game_map, character_location, score);
+                } else {
+                    attron(COLOR_PAIR(6));
+                    mvprintw(23, MAP_WIDTH + 2, "Cannot save as guest!");
+                    attroff(COLOR_PAIR(6));
+                    refresh();
+                    napms(1500);
+                }
+                break;
+
             case 'q':
                 // Confirm quit
                 attron(COLOR_PAIR(5));
-                mvprintw(18, MAP_WIDTH + 2, "Really quit? (y/n)");
-                refresh();
+                mvprintw(23, MAP_WIDTH + 2, "Save before quit? (y/n/c)");
                 attroff(COLOR_PAIR(5));
+                refresh();
                 
-                if (getch() == 'y') {
-                    // Save high score if logged in
-                    if (manager->current_user && score > manager->current_user->score) {
-                        manager->current_user->score = score;
-                        save_users_to_json(manager);
-                    }
+                char choice = getch();
+                if (choice == 'y' && manager->current_user) {
+                    save_current_game(manager, game_map, character_location, score);
+                    game_running = false;
+                } else if (choice == 'n') {
                     game_running = false;
                 }
                 continue;
 
             case 'h': case 'j': case 'k': case 'l':
             case 'y': case 'u': case 'b': case 'n':
-                move_character(&character_location, key, &game_map);
+                move_character(character_location, key, game_map);
                 
                 // Mark new position as visited
-                visited[character_location.y][character_location.x] = 1;
+                visited[character_location->y][character_location->x] = 1;
                 
                 // Check for food collection
-                if (game_map.grid[character_location.y][character_location.x] == FOOD) {
+                if (game_map->grid[character_location->y][character_location->x] == FOOD) {
                     score += 10;
-                    game_map.grid[character_location.y][character_location.x] = FLOOR;
+                    game_map->grid[character_location->y][character_location->x] = FLOOR;
                     
                     // Display score message
                     attron(COLOR_PAIR(2));
-                    mvprintw(18, MAP_WIDTH + 2, "+10 points!");
+                    mvprintw(23, MAP_WIDTH + 2, "+10 points!");
                     attroff(COLOR_PAIR(2));
                     refresh();
-                    napms(500); // Show message briefly
+                    napms(500);
                 }
                 break;
 
@@ -147,7 +393,7 @@ void game_menu(struct UserManager* manager) {
         bool all_food_collected = true;
         for (int y = 0; y < MAP_HEIGHT; y++) {
             for (int x = 0; x < MAP_WIDTH; x++) {
-                if (game_map.grid[y][x] == FOOD) {
+                if (game_map->grid[y][x] == FOOD) {
                     all_food_collected = false;
                     break;
                 }
@@ -169,26 +415,19 @@ void game_menu(struct UserManager* manager) {
         }
     }
 
-    // Game over cleanup and display
-    clear();
-    attron(COLOR_PAIR(5));
-    mvprintw(MAP_HEIGHT/2 - 1, MAP_WIDTH/2 - 10, "Game Over!");
-    mvprintw(MAP_HEIGHT/2, MAP_WIDTH/2 - 10, "Final Score: %d", score);
-    
-    // Update high score if logged in
-    if (manager->current_user) {
-        if (score > manager->current_user->score) {
-            mvprintw(MAP_HEIGHT/2 + 1, MAP_WIDTH/2 - 10, "New High Score!");
-            manager->current_user->score = score;
-            save_users_to_json(manager);
-        }
+    // Game over cleanup and update score
+    if (manager->current_user && score > manager->current_user->score) {
+        manager->current_user->score = score;
+        save_users_to_json(manager);
+        
+        clear();
+        attron(COLOR_PAIR(5));
+        mvprintw(MAP_HEIGHT/2 - 1, MAP_WIDTH/2 - 10, "New High Score: %d!", score);
+        attroff(COLOR_PAIR(5));
+        refresh();
+        napms(2000);
     }
-    
-    attroff(COLOR_PAIR(5));
-    refresh();
-    napms(2000);
 }
-
 
 // Implementation of print_point
 void print_point(struct Point p, const char* type) {
