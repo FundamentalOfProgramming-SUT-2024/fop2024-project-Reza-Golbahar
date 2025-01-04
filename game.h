@@ -2,19 +2,26 @@
 #define GAME_H
 
 #include <ncurses.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
 #include <stdbool.h>
 
+// Constants
 #define MIN_ROOM_COUNT 6
 #define MIN_WIDTH_OR_LENGTH 4
 #define MAX_POINTS 100
 #define MAX_ROOMS 9
 #define MAP_WIDTH 80
 #define MAP_HEIGHT 24
+#define MIN_ROOM_DISTANCE 2
 #define WINDOW_CHANCE 15
+#define DOOR_CHANCE 10
+#define FOOD_CHANCE 20
 
 // Symbols
 #define WALL_VERTICAL '|'
-#define WALL_HORIZONTAL '_'
+#define WALL_HORIZONTAL '-'
 #define CORRIDOR '#'
 #define DOOR '+'
 #define WINDOW '='
@@ -22,6 +29,7 @@
 #define FOOD '@'
 #define PLAYER 'P'
 
+// Structure definitions
 struct Point {
     int x;
     int y;
@@ -54,14 +62,13 @@ struct Map {
     struct Point initial_position;
 };
 
-bool init_ncurses(void);
-void handle_file_error(const char* operation);
+// Function declarations - Updated to match implementations
 void print_point(struct Point p, const char* type);
-void init_map(struct Map* game_map);
 bool rooms_overlap(const struct Room* r1, const struct Room* r2);
 struct Map generate_map(void);
-void print_map(struct Map* game_map);
+void print_map(struct Map* game_map);  // Changed from const
 void message(const char* text);
-void move_character(struct Point* character_location, char key, struct Map* game_map);
+void move_character(struct Point* character_location, char key, struct Map* game_map);  // Changed from const
+void init_map(struct Map* game_map);
 
-#endif
+#endif // GAME_H

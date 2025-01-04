@@ -1,4 +1,6 @@
 #include <ncurses.h>
+#include <string.h>
+#include <stdlib.h>
 #include "menu.h"
 #include "users.h"
 
@@ -235,21 +237,6 @@ bool entering_menu(struct UserManager* manager, int selected_index) {
 }
 
 
-// Initialize ncurses
-bool init_ncurses(void) {
-    initscr();
-    if (!has_colors()) {
-        endwin();
-        printf("Your terminal does not support color\n");
-        return false;
-    }
-    start_color();
-    cbreak();
-    noecho();
-    keypad(stdscr, TRUE);
-    return true;
-}
-
 void first_menu(struct UserManager* manager) {
     char input;
     
@@ -296,6 +283,54 @@ void first_menu(struct UserManager* manager) {
     }
 }
 
+// Function to handle the game loop
+void game_menu(struct UserManager* manager) {
+    struct Map game_map = generate_map();
+    struct Point character_location = game_map.initial_position;
+    int score = 0;
+    bool in_game = true;
+
+    while (in_game) {
+        clear();
+        
+        // Print score and controls
+        mvprintw(0, MAP_WIDTH + 2, "Score: %d", score);
+        mvprintw(2, MAP_WIDTH + 2, "Controls:");
+        mvprintw(3, MAP_WIDTH + 2, "h,j,k,l - Move");
+        mvprintw(4, MAP_WIDTH + 2, "y,u,b,n - Diagonal");
+        mvprintw(5, MAP_WIDTH + 2, "q - Quit");
+
+        // Print map with current character position
+        for (int y = 0; y < MAP_HEIGHT; y++) {
+            for (int x = 0; x < MAP_WIDTH; x++) {
+                if (y == character_location.y && x == character_location.x) {
+                    mvaddch(y, x, PLAYER);
+                } else {
+                    mvaddch(y, x, game_map.grid[y][x]);
+                }
+            }
+        }
+        refresh();
+
+        // Handle input
+        char key = getch();
+        if (key == 'q') {
+            in_game = false;
+        } else {
+            struct Point old_pos = character_location;
+            move_character(&character_location, key, &game_map);
+
+            // Check for food collection
+            if (game_map.grid[character_location.y][character_location.x] == FOOD) {
+                score += 10;
+                game_map.grid[character_location.y][character_location.x] = FLOOR;
+                if (manager->current_user) {
+                    manager->current_user->score += 10;
+                }
+            }
+        }
+    }
+}
 
 
 void settings(struct UserManager* manager) {
