@@ -2,32 +2,43 @@
 #define GAME_H
 
 #include <stdbool.h>
-#include "users.h"  // Add this to make UserManager visible
+#include <stdint.h>
+#include <ncurses.h>
+#include <time.h>
+#include "users.h"
+#include "menu.h"
 
-#define MIN_ROOM_COUNT 6
-#define MIN_WIDTH_OR_LENGTH 4
-#define MAX_POINTS 100
-#define MAX_ROOMS 9
+// Map symbols
+#define WALL_VERTICAL '|'
+#define WALL_HORIZONTAL '-'
+#define FLOOR '.'
+#define DOOR '+'
+#define CORRIDOR '#'
+#define PILLAR 'O'
+#define WINDOW '*'
+#define STAIRS '>'
+#define FOG ' '
+#define FOOD '$'
+
+// Map constants
 #define MAP_WIDTH 80
 #define MAP_HEIGHT 24
+#define MIN_ROOMS 6
+#define MAX_ROOMS 10
+#define MIN_ROOM_SIZE 4
+#define MAX_ROOM_SIZE 8
 #define MIN_ROOM_DISTANCE 2
-#define WINDOW_CHANCE 20
+#define CORRIDOR_VIEW_DISTANCE 5
 #define MAX_DOORS 4
-#define DOOR '+'
-#define WALL '|'
+#define WINDOW_CHANCE 20
+#define SIGHT_RANGE 5
+
+// Utility macros
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
+#define MAX(a,b) ((a) > (b) ? (a) : (b))
 
 #define MAX_MESSAGES 5
 #define MESSAGE_LENGTH 100
-
-// Map symbols
-#define FLOOR '.'
-#define WALL_HORIZONTAL '_'
-#define WALL_VERTICAL '|'
-#define WINDOW '*'
-#define PLAYER '@'
-#define FOOD '%'
-#define DOOR '+'
-#define WALL '|'
 
 struct Point {
     int x;
@@ -35,81 +46,92 @@ struct Point {
 };
 
 struct Room {
-    int width;
-    int height;
     int left_wall;
     int right_wall;
-    int up_wall;
-    int down_wall;
-    struct Point spawn_point;
+    int top_wall;     // Previously up_wall
+    int bottom_wall;  // Previously down_wall
+    int width;
+    int height;
     struct Point doors[MAX_DOORS];
     int door_count;
-    int floor_count;
-    int wall_count;
-    int window_count;
+    bool has_stairs;
+    bool visited;
 };
 
 struct Map {
     char grid[MAP_HEIGHT][MAP_WIDTH];
-    int width;
-    int height;
-    int room_count;
+    bool visibility[MAP_HEIGHT][MAP_WIDTH];
+    bool discovered[MAP_HEIGHT][MAP_WIDTH];
     struct Room rooms[MAX_ROOMS];
+    int room_count;
+    struct Point stairs_location;
     struct Point initial_position;
 };
 
-struct SavedGame {
-    char name[MAX_STRING_LEN];
-    struct Map game_map;
-    struct Point character_location;
-    int score;
-    time_t save_time;
-};
-
 struct GameMessage {
-    char text[MESSAGE_LENGTH];
-    int time_to_live;  // How many frames to show the message
+    char text[100];
+    int time_to_live;
     int color_pair;
 };
 
 struct MessageQueue {
-    struct GameMessage messages[MAX_MESSAGES];
+    struct GameMessage messages[5];
     int count;
 };
 
+struct SavedGame {
+    struct Map game_map;
+    struct Point character_location;
+    int score;
+    time_t save_time;
+    char name[MAX_STRING_LEN];
+};
 
-// Function declarations
-void print_point(struct Point p, const char* type);
-void connect_doors(struct Map* game_map, struct Point door1, struct Point door2);
-void create_corridor(struct Map* game_map, struct Room room1, struct Room room2);
-void init_map(struct Map* game_map);
-bool rooms_overlap(const struct Room* r1, const struct Room* r2);
+// Game core functions
+void play_game(struct UserManager* manager, struct Map* game_map, struct Point* character_location, int initial_score);
+
 struct Map generate_map(void);
-void print_map(struct Map* game_map, char visible[MAP_HEIGHT][MAP_WIDTH], struct Point character_location);
-void message(const char* text);
+void init_map(struct Map* map);
+
+// Room and map generation
+bool is_valid_room_placement(struct Map* map, struct Room* room);
+void place_room(struct Map* map, struct Room* room);
+void connect_rooms(struct Map* map);
+void place_stairs(struct Map* map);
+void place_pillars(struct Map* map, struct Room* room);
+void place_windows(struct Map* map, struct Room* room);
+void add_food(struct Map* map);
+bool validate_stair_placement(struct Map* map);
+
+// Movement and visibility
 void move_character(struct Point* character_location, char key, struct Map* game_map);
+void update_visibility(struct Map* map, struct Point* player_pos);
+bool is_valid_move(struct Map* map, struct Point* new_pos);
 void sight_range(struct Map* game_map, struct Point* character_location);
-void game_menu(struct UserManager* manager);
-void connect_rooms(struct Map* game_map);
-// Add these function declarations at the top of game.c, after the includes
-bool isPointInRoom(struct Point* point, struct Room* room);
-void showRoom(struct Map* game_map, struct Room* room, char visible[MAP_HEIGHT][MAP_WIDTH]);
+
+// Room connectivity
+bool hasConnectingDoor(struct Map* game_map, struct Room* room1, struct Room* room2);
+void connect_doors(struct Map* game_map, struct Point door1, struct Point door2);
+void create_corridor(struct Map* game_map, struct Room* room1, struct Room* room2);
 bool canSeeRoomThroughWindow(struct Map* game_map, struct Room* room1, struct Room* room2);
-void showCorridorVisibility(struct Map* game_map, struct Point* pos, char visible[MAP_HEIGHT][MAP_WIDTH], char visited[MAP_HEIGHT][MAP_WIDTH]);
-int manhattanDistance(int x1, int y1, int x2, int y2);
 bool areRoomsConnectable(struct Room* room1, struct Room* room2);
 void create_door(struct Map* game_map, struct Room* room1, struct Room* room2);
 struct Room* findNearestRoom(struct Map* game_map, struct Room* room);
-bool hasConnectingDoor(struct Map* game_map, struct Room* room1, struct Room* room2);
-void play_game(struct UserManager* manager, struct Map* game_map, 
-               struct Point* character_location, int initial_score);
-extern void settings(struct UserManager* manager);
-bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game);
-void save_current_game(struct UserManager* manager, struct Map* game_map, 
-                      struct Point* character_location, int score);
+
+// Helper functions
+int manhattanDistance(int x1, int y1, int x2, int y2);
+bool isPointInRoom(struct Point* point, struct Room* room);
+void showRoom(struct Map* game_map, struct Room* room, char visible[MAP_HEIGHT][MAP_WIDTH]);
+bool can_see_room(struct Map* map, struct Room* room1, struct Room* room2);
+void print_point(struct Point p, const char* type);
+
+// Message system
 void add_game_message(struct MessageQueue* queue, const char* text, int color_pair);
 void update_messages(struct MessageQueue* queue);
 void draw_messages(struct MessageQueue* queue, int start_y, int start_x);
 
+// Map display
+void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct Point character_location);
+struct Map generate_map(void);
 
 #endif

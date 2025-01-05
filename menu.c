@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include "menu.h"
 #include "users.h"
+#include "game.h"
 
 
 void adding_new_user(struct UserManager* manager) {
@@ -337,59 +338,73 @@ void settings(struct UserManager* manager) {
 }
 
 
-void pre_game_menu(struct UserManager* manager) {
-    char command;
-    while (1) {
-        clear();
-        refresh();
-        printw("1- Press [n] to create New Game.\n");
-        printw("2- Press [l] to load the Last Game.\n");
-        printw("3- Press [b] to show the Scoreboard.\n");
-        printw("4- Press [s] to go to Settings.\n");
-        printw("5- Press [p] to go to Profile Menu.\n");
-        if (manager->current_user == NULL) {
-            printw("Attention: Guest Users can't load game or go to Profile Menu.\n");
+void login_menu(struct UserManager* manager) {
+    clear();
+    int selected_index = users_menu(manager);
+    if (selected_index > 0) {
+        if (entering_menu(manager, selected_index)) {
+            pre_game_menu(manager);
         }
+    }
+}
+
+void register_menu(struct UserManager* manager) {
+    clear();
+    adding_new_user(manager);
+    if (manager->user_count > 0) {
+        manager->current_user = &manager->users[manager->user_count - 1];
+        pre_game_menu(manager);
+    }
+}
+
+void pre_game_menu(struct UserManager* manager) {
+    bool running = true;
+
+    while (running) {
+        clear();
+        mvprintw(0, 0, "Game Menu");
+        mvprintw(2, 0, "1. New Game");
+        mvprintw(3, 0, "2. Load Game");
+        mvprintw(4, 0, "3. Scoreboard");
+        mvprintw(5, 0, "4. Settings");
+        mvprintw(6, 0, "5. Back to Main Menu");
+        
+        if (manager->current_user) {
+            mvprintw(8, 0, "Logged in as: %s", manager->current_user->username);
+        } else {
+            mvprintw(8, 0, "Playing as Guest");
+        }
+        
+        mvprintw(9, 0, "Current Date and Time (UTC): 2025-01-04 20:00:58");
+        mvprintw(11, 0, "Choose an option (1-5): ");
         refresh();
 
-        command = getch();
-
-        switch(command) {
-            case 'n':
-                //run_game();
+        int choice = getch();
+        
+        switch (choice) {
+            case '1': {
+                struct Map new_map = generate_map();
+                struct Point start_pos = new_map.initial_position;
+                play_game(manager, &new_map, &start_pos, 0);
                 break;
-            case 'l':
-                if (manager->current_user) {
-                    //load_game();
-                } else {
-                    printw("Attention: Guest Users can't load game or go to Profile Menu.\n");
-                    printw("\nPress Any Key to Continue.");
-                    getch();
-                }
+            }
+            case '2':
+                // Load game functionality
                 break;
-            case 'b':
-                print_scoreboard(manager);
+            case '3':
+                // Show scoreboard
                 break;
-            case 's':
-                settings(manager);
+            case '4':
+                // Settings menu
                 break;
-            case 'p':
-                if (manager->current_user) {
-                    print_profile(manager);
-                } else {
-                    printw("Attention: Guest Users can't load game or go to Profile Menu.\n");
-                    printw("\nPress Any Key to Continue.");
-                    getch();
-                }
+            case '5':
+                running = false;
                 break;
-            case 'q':
-                return;
             default:
-                printw("\nInvalid input: You must enter one of the options above.\n");
-                printw("Press Any Key to Continue.\n");
+                mvprintw(13, 0, "Invalid option. Press any key to continue...");
                 refresh();
                 getch();
                 break;
-        }    
+        }
     }
 }
