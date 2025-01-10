@@ -9,6 +9,7 @@
 #include "menu.h"
 
 // Map symbols
+
 #define WALL_VERTICAL '|'
 #define WALL_HORIZONTAL '-'
 #define FLOOR '.'
@@ -102,9 +103,14 @@ void place_pillars(struct Map* map, struct Room* room);
 void place_windows(struct Map* map, struct Room* room);
 void add_food(struct Map* map);
 bool validate_stair_placement(struct Map* map);
+void save_current_game(struct UserManager* manager, struct Map* game_map, 
+                      struct Point* character_location, int score);
+bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game);
+void list_saved_games(struct UserManager* manager);
+
 
 // Movement and visibility
-void move_character(struct Point* character_location, char key, struct Map* game_map);
+void move_character(struct Point* character_location, int key, struct Map* game_map);
 void update_visibility(struct Map* map, struct Point* player_pos);
 bool is_valid_move(struct Map* map, struct Point* new_pos);
 void sight_range(struct Map* game_map, struct Point* character_location);

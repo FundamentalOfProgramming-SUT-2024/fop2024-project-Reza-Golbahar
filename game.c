@@ -28,155 +28,6 @@
 #include "users.h"  // Add this before game.h
 #include "game.h"
 
-// In game.c, update the save_current_game and load_saved_game functions:
-
-void save_current_game(struct UserManager* manager, struct Map* game_map, 
-                      struct Point* character_location, int score) {
-    if (!manager->current_user) {
-        mvprintw(0, 0, "Cannot save game as guest user.");
-        refresh();
-        getch();
-        return;
-    }
-
-    char filename[MAX_STRING_LEN * 3];  // Increased buffer size
-    char save_name[MAX_STRING_LEN];
-
-    // Get save name from user
-    clear();
-    echo();
-    mvprintw(0, 0, "Enter name for this save (max 50 chars): ");
-    refresh();
-    getnstr(save_name, 50);  // Limit input length
-    noecho();
-
-    // Ensure save_name is null-terminated
-    save_name[50] = '\0';
-
-    // Create filename using username and save name
-    if (snprintf(filename, sizeof(filename), "saves/%s_%s.sav", 
-                manager->current_user->username, save_name) >= sizeof(filename)) {
-        mvprintw(2, 0, "Error: Filename too long.");
-        refresh();
-        getch();
-        return;
-    }
-
-    FILE* file = fopen(filename, "wb");
-    if (!file) {
-        mvprintw(2, 0, "Error: Could not create save file.");
-        refresh();
-        getch();
-        return;
-    }
-
-    // Create save game structure
-    struct SavedGame save = {
-        .game_map = *game_map,
-        .character_location = *character_location,
-        .score = score,
-        .save_time = time(NULL)
-    };
-    strncpy(save.name, save_name, MAX_STRING_LEN - 1);
-    save.name[MAX_STRING_LEN - 1] = '\0';  // Ensure null termination
-
-    // Write save data
-    fwrite(&save, sizeof(struct SavedGame), 1, file);
-    fclose(file);
-
-    mvprintw(2, 0, "Game saved successfully!");
-    refresh();
-    getch();
-}
-
-bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game) {
-    if (!manager->current_user) {
-        mvprintw(0, 0, "Cannot load game as guest user.");
-        refresh();
-        getch();
-        return false;
-    }
-
-    // List available saves
-    clear();
-    mvprintw(0, 0, "Available saved games:");
-    
-    char pattern[MAX_STRING_LEN * 3];  // Increased buffer size
-    if (snprintf(pattern, sizeof(pattern), "saves/%s_*.sav", 
-                manager->current_user->username) >= sizeof(pattern)) {
-        mvprintw(2, 0, "Error: Pattern string too long.");
-        refresh();
-        getch();
-        return false;
-    }
-    
-    // List save files
-    DIR* dir = opendir("saves");
-    struct dirent* entry;
-    int count = 0;
-    
-    if (dir) {
-        while ((entry = readdir(dir)) != NULL) {
-            if (strstr(entry->d_name, manager->current_user->username) == entry->d_name) {
-                char* save_name = strchr(entry->d_name, '_');
-                if (save_name) {
-                    save_name++; // Skip the underscore
-                    char* dot = strrchr(save_name, '.');
-                    if (dot) *dot = '\0'; // Remove .sav extension
-                    mvprintw(count + 2, 0, "%d. %s", count + 1, save_name);
-                    count++;
-                }
-            }
-        }
-        closedir(dir);
-    }
-
-    if (count == 0) {
-        mvprintw(2, 0, "No saved games found.");
-        refresh();
-        getch();
-        return false;
-    }
-
-    // Get user choice
-    mvprintw(count + 3, 0, "Enter save name to load (or 'q' to cancel): ");
-    refresh();
-    
-    char save_name[MAX_STRING_LEN];
-    echo();
-    getnstr(save_name, 50);  // Limit input length
-    noecho();
-
-    if (save_name[0] == 'q') return false;
-
-    // Ensure save_name is null-terminated
-    save_name[50] = '\0';
-
-    // Construct filename
-    char filename[MAX_STRING_LEN * 3];  // Increased buffer size
-    if (snprintf(filename, sizeof(filename), "saves/%s_%s.sav", 
-                manager->current_user->username, save_name) >= sizeof(filename)) {
-        mvprintw(count + 5, 0, "Error: Filename too long.");
-        refresh();
-        getch();
-        return false;
-    }
-
-    // Try to open save file
-    FILE* file = fopen(filename, "rb");
-    if (!file) {
-        mvprintw(count + 5, 0, "Error: Could not find save file.");
-        refresh();
-        getch();
-        return false;
-    }
-
-    // Read save data
-    fread(saved_game, sizeof(struct SavedGame), 1, file);
-    fclose(file);
-    return true;
-}
-
 void game_menu(struct UserManager* manager) {
     while (1) {
         clear();
@@ -248,16 +99,16 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                struct Point* character_location, int initial_score) {
     bool game_running = true;
     int score = initial_score;
-    
+
     while (game_running) {
         clear();
-        
-        // Update visibility
+
+        // Update visibility (if you have a visibility mechanic)
         update_visibility(game_map, character_location);
-        
+
         // Draw the map
         print_map(game_map, game_map->visibility, *character_location);
-        
+
         // Show game info
         mvprintw(MAP_HEIGHT + 1, 0, "Score: %d", score);
         if (manager->current_user) {
@@ -267,7 +118,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         }
         mvprintw(MAP_HEIGHT + 3, 0, "Use arrow keys to move, 'q' to quit");
         refresh();
-        
+
         // Handle input
         int key = getch();
         switch (key) {
@@ -281,7 +132,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                 game_running = false;
                 break;
         }
-        
+
         // Check for game over conditions
         if (game_map->grid[character_location->y][character_location->x] == STAIRS) {
             // Handle level completion
@@ -293,6 +144,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         }
     }
 }
+
 
 // Implementation of print_point
 void print_point(struct Point p, const char* type) {
@@ -463,19 +315,20 @@ void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct
         for (int x = 0; x < MAP_WIDTH; x++) {
             char display_char;
             if (x == character_location.x && y == character_location.y) {
-                display_char = '@';
+                display_char = '@'; // Player character
             } else if (visible[y][x]) {
-                display_char = game_map->grid[y][x];
+                display_char = game_map->grid[y][x]; // Visible tiles
             } else if (game_map->discovered[y][x]) {
-                display_char = game_map->grid[y][x];
+                display_char = game_map->grid[y][x]; // Previously discovered tiles
             } else {
-                display_char = FOG;
+                display_char = FOG; // Unexplored tiles
             }
             mvaddch(y, x, display_char);
         }
     }
     refresh();
 }
+
 
 // Connect two points with a corridor
 void connect_doors(struct Map* game_map, struct Point door1, struct Point door2) {
@@ -679,29 +532,28 @@ void message(const char* text) {
     refresh();
 }
 
-void move_character(struct Point* character_location, char key, struct Map* game_map) {
+void move_character(struct Point* character_location, int key, struct Map* game_map) {
     struct Point new_location = *character_location;
 
-    switch(key) {
-        case 'u': new_location.x++; new_location.y++; break;
-        case 'y': new_location.x--; new_location.y++; break;
-        case 'b': new_location.x--; new_location.y--; break;
-        case 'n': new_location.x++; new_location.y--; break;
-        case 'h': new_location.x--; break;
-        case 'j': new_location.y++; break;
-        case 'k': new_location.y--; break;
-        case 'l': new_location.x++; break;
-        default: return;
+    // Determine new position based on key input
+    switch (key) {
+        case KEY_UP:    new_location.y--; break;
+        case KEY_DOWN:  new_location.y++; break;
+        case KEY_LEFT:  new_location.x--; break;
+        case KEY_RIGHT: new_location.x++; break;
+        default: return; // Ignore invalid keys
     }
 
-    // Check bounds and wall collision
+    // Validate new position
     if (new_location.x >= 0 && new_location.x < MAP_WIDTH &&
         new_location.y >= 0 && new_location.y < MAP_HEIGHT &&
-        game_map->grid[new_location.y][new_location.x] != '|' &&
-        game_map->grid[new_location.y][new_location.x] != '_') {
+        (game_map->grid[new_location.y][new_location.x] == FLOOR || 
+         game_map->grid[new_location.y][new_location.x] == CORRIDOR)) {
+        // Update position
         *character_location = new_location;
     }
 }
+
 
 void connect_rooms(struct Map* map) {
     // Connect each room to its nearest unconnected neighbor
@@ -1035,4 +887,171 @@ bool can_see_room(struct Map* map, struct Room* room1, struct Room* room2) {
     }
     
     return true;
+}
+
+// Add validation for staircase placement
+bool validate_stair_placement(struct Map* map) {
+    int stair_count = 0;
+    for (int y = 0; y < MAP_HEIGHT; y++) {
+        for (int x = 0; x < MAP_WIDTH; x++) {
+            if (map->grid[y][x] == STAIRS) stair_count++;
+        }
+    }
+    return stair_count == 1;
+}
+
+/**
+ * Creates a safe filename for save games.
+ * Maximum combined length of username and savename must be less than
+ * MAX_FILENAME_LEN - 12 characters (accounting for "saves/", "_", and ".sav")
+ * 
+ * @return false if the resulting filename would be too long
+ */
+
+bool create_safe_filename(char* dest, size_t dest_size, const char* username, const char* savename) {
+    // Calculate required space
+    size_t required = strlen("saves/") + strlen(username) + 1 + strlen(savename) + 
+                     strlen(".sav") + 1;
+    
+    if (required > dest_size) {
+        return false;
+    }
+    
+    snprintf(dest, dest_size, "saves/%s_%s.sav", username, savename);
+    return true;
+}
+
+void save_current_game(struct UserManager* manager, struct Map* game_map, 
+                      struct Point* character_location, int score) {
+    if (!manager->current_user) {
+        mvprintw(0, 0, "Cannot save game as guest user.");
+        refresh();
+        getch();
+        return;
+    }
+
+    char filename[256]; // Increased buffer size to prevent truncation
+    char save_name[100];
+
+    clear();
+    echo();
+    mvprintw(0, 0, "Enter name for this save: ");
+    refresh();
+    getnstr(save_name, sizeof(save_name) - 1); // Limit input to fit within the buffer
+    noecho();
+
+    // Truncate username and save_name if they exceed a safe length
+    char safe_username[94]; // Leave space for prefix, underscore, extension
+    char safe_save_name[94];
+    strncpy(safe_username, manager->current_user->username, 93);
+    safe_username[93] = '\0';
+    strncpy(safe_save_name, save_name, 93);
+    safe_save_name[93] = '\0';
+
+    // Create filename using truncated strings
+    int written = snprintf(filename, sizeof(filename), "saves/%s_%s.sav", safe_username, safe_save_name);
+    if (written < 0 || written >= sizeof(filename)) {
+        mvprintw(2, 0, "Error: Filename too long.");
+        refresh();
+        getch();
+        return;
+    }
+
+    FILE* file = fopen(filename, "wb");
+    if (!file) {
+        mvprintw(2, 0, "Error: Could not create save file.");
+        refresh();
+        getch();
+        return;
+    }
+
+    struct SavedGame save = {
+        .game_map = *game_map,
+        .character_location = *character_location,
+        .score = score,
+        .save_time = time(NULL)
+    };
+    strncpy(save.name, save_name, sizeof(save.name) - 1);
+
+    fwrite(&save, sizeof(struct SavedGame), 1, file);
+    fclose(file);
+
+    mvprintw(2, 0, "Game saved successfully!");
+    refresh();
+    getch();
+}
+
+bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game) {
+    if (!manager->current_user) {
+        mvprintw(0, 0, "Cannot load game as guest user.");
+        refresh();
+        getch();
+        return false;
+    }
+
+    clear();
+    mvprintw(0, 0, "Enter save name to load: ");
+    refresh();
+
+    char save_name[100];
+    echo();
+    getnstr(save_name, sizeof(save_name) - 1); // Limit input to fit within buffer
+    noecho();
+
+    char safe_username[94];
+    char safe_save_name[94];
+    strncpy(safe_username, manager->current_user->username, 93);
+    safe_username[93] = '\0';
+    strncpy(safe_save_name, save_name, 93);
+    safe_save_name[93] = '\0';
+
+    char filename[256];
+    int written = snprintf(filename, sizeof(filename), "saves/%s_%s.sav", safe_username, safe_save_name);
+    if (written < 0 || written >= sizeof(filename)) {
+        mvprintw(2, 0, "Error: Filename too long.");
+        refresh();
+        getch();
+        return false;
+    }
+
+    FILE* file = fopen(filename, "rb");
+    if (!file) {
+        mvprintw(2, 0, "Error: Could not find save file.");
+        refresh();
+        getch();
+        return false;
+    }
+
+    fread(saved_game, sizeof(struct SavedGame), 1, file);
+    fclose(file);
+    return true;
+}
+
+
+void list_saved_games(struct UserManager* manager) {
+    if (!manager->current_user) return;
+
+    char cmd[MAX_STRING_LEN * 3];
+    snprintf(cmd, sizeof(cmd), "ls saves/%s_*.sav 2>/dev/null", 
+             manager->current_user->username);
+
+    FILE* pipe = popen(cmd, "r");
+    if (!pipe) return;
+
+    mvprintw(0, 0, "Available saved games:");
+    int line = 2;
+    char buffer[256];
+    
+    while (fgets(buffer, sizeof(buffer), pipe)) {
+        // Extract save name from filename
+        char* start = strrchr(buffer, '_') + 1;
+        char* end = strrchr(buffer, '.');
+        if (start && end) {
+            *end = '\0';
+            mvprintw(line++, 0, "%s", start);
+        }
+    }
+    
+    pclose(pipe);
+    refresh();
 }
