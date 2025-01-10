@@ -16,7 +16,7 @@
 #define DOOR '+'
 #define CORRIDOR '#'
 #define PILLAR 'O'
-#define WINDOW '*'
+#define WINDOW '='
 #define STAIRS '>'
 #define FOG ' '
 #define FOOD '$'

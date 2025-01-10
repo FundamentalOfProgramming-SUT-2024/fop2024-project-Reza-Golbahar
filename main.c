@@ -84,24 +84,3 @@ int main() {
     endwin();
     return 0;
 }
-
-void place_windows(struct Map* map, struct Room* room) {
-    // Place windows on room walls with a certain chance
-    for (int y = room->top_wall + 1; y < room->bottom_wall; y++) {
-        if (rand() % 100 < WINDOW_CHANCE) {
-            map->grid[y][room->left_wall] = WINDOW;
-        }
-        if (rand() % 100 < WINDOW_CHANCE) {
-            map->grid[y][room->right_wall] = WINDOW;
-        }
-    }
-    
-    for (int x = room->left_wall + 1; x < room->right_wall; x++) {
-        if (rand() % 100 < WINDOW_CHANCE) {
-            map->grid[room->top_wall][x] = WINDOW;
-        }
-        if (rand() % 100 < WINDOW_CHANCE) {
-            map->grid[room->bottom_wall][x] = WINDOW;
-        }
-    }
-}

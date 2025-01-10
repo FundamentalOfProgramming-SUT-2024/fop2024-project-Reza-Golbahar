@@ -8,7 +8,6 @@
 #include "users.h"
 
 #define DOOR '+'
-#define WINDOW '*'
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 
@@ -330,6 +329,7 @@ void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct
 }
 
 
+
 // Connect two points with a corridor
 void connect_doors(struct Map* game_map, struct Point door1, struct Point door2) {
     int x1 = door1.x;
@@ -548,11 +548,13 @@ void move_character(struct Point* character_location, int key, struct Map* game_
     if (new_location.x >= 0 && new_location.x < MAP_WIDTH &&
         new_location.y >= 0 && new_location.y < MAP_HEIGHT &&
         (game_map->grid[new_location.y][new_location.x] == FLOOR || 
-         game_map->grid[new_location.y][new_location.x] == CORRIDOR)) {
+         game_map->grid[new_location.y][new_location.x] == CORRIDOR || 
+         game_map->grid[new_location.y][new_location.x] == DOOR)) {
         // Update position
         *character_location = new_location;
     }
 }
+
 
 
 void connect_rooms(struct Map* map) {
@@ -1054,4 +1056,25 @@ void list_saved_games(struct UserManager* manager) {
     
     pclose(pipe);
     refresh();
+}
+
+void place_windows(struct Map* map, struct Room* room) {
+    // Place windows on room walls with a certain chance
+    for (int y = room->top_wall + 1; y < room->bottom_wall; y++) {
+        if (rand() % 100 < WINDOW_CHANCE) {
+            map->grid[y][room->left_wall] = WINDOW;
+        }
+        if (rand() % 100 < WINDOW_CHANCE) {
+            map->grid[y][room->right_wall] = WINDOW;
+        }
+    }
+    
+    for (int x = room->left_wall + 1; x < room->right_wall; x++) {
+        if (rand() % 100 < WINDOW_CHANCE) {
+            map->grid[room->top_wall][x] = WINDOW;
+        }
+        if (rand() % 100 < WINDOW_CHANCE) {
+            map->grid[room->bottom_wall][x] = WINDOW;
+        }
+    }
 }
