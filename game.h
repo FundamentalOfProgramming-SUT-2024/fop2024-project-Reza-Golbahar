@@ -48,7 +48,8 @@ struct Point {
     int y;
 };
 
-struct Room {
+typedef struct Room {
+    int x, y;
     int left_wall;
     int right_wall;
     int top_wall;     // Previously up_wall
@@ -59,7 +60,7 @@ struct Room {
     int door_count;
     bool has_stairs;
     bool visited;
-};
+} Room;
 
 struct Map {
     char grid[MAP_HEIGHT][MAP_WIDTH];
@@ -91,15 +92,14 @@ struct SavedGame {
 };
 
 // Game core functions
-void play_game(struct UserManager* manager, struct Map* game_map, struct Point* character_location, int initial_score);
-
+void play_game(struct UserManager* manager, struct Map* game_map, 
+               struct Point* character_location, int initial_score);
 struct Map generate_map(void);
 void init_map(struct Map* map);
 
 // Room and map generation
 bool is_valid_room_placement(struct Map* map, struct Room* room);
 void place_room(struct Map* map, struct Room* room);
-void connect_rooms(struct Map* map);
 void place_stairs(struct Map* map);
 void place_pillars(struct Map* map, struct Room* room);
 void place_windows(struct Map* map, struct Room* room);
@@ -113,18 +113,14 @@ void list_saved_games(struct UserManager* manager);
 
 // Movement and visibility
 void move_character(struct Point* character_location, int key, struct Map* game_map);
-void update_visibility(struct Map* map, struct Point* player_pos);
+void update_visibility(struct Map* map, struct Point* player_pos, bool visible[MAP_HEIGHT][MAP_WIDTH]);
 bool is_valid_move(struct Map* map, struct Point* new_pos);
 void sight_range(struct Map* game_map, struct Point* character_location);
 
 // Room connectivity
-bool hasConnectingDoor(struct Map* game_map, struct Room* room1, struct Room* room2);
-void connect_doors(struct Map* game_map, struct Point door1, struct Point door2);
-void create_corridor(struct Map* game_map, struct Room* room1, struct Room* room2);
+void create_corridors(struct Map* game_map, Room* rooms, int room_count);
 bool canSeeRoomThroughWindow(struct Map* game_map, struct Room* room1, struct Room* room2);
-bool areRoomsConnectable(struct Room* room1, struct Room* room2);
 void create_door(struct Map* game_map, struct Room* room1, struct Room* room2);
-struct Room* findNearestRoom(struct Map* game_map, struct Room* room);
 
 // Helper functions
 int manhattanDistance(int x1, int y1, int x2, int y2);
@@ -141,7 +137,4 @@ void draw_messages(struct MessageQueue* queue, int start_y, int start_x);
 // Map display
 void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct Point character_location);
 struct Map generate_map(void);
-bool validate_room_accessibility(struct Map* map);
-bool can_connect(struct Room* room1, struct Room* room2);
-void dfs_connect(struct Map* map, int room_idx, bool* visited);
 #endif
