@@ -383,8 +383,19 @@ void pre_game_menu(struct UserManager* manager) {
         
         switch (choice) {
             case '1': {
+                // Generate the map
                 struct Map new_map = generate_map();
+                printw("Map generated: %d rooms\n", new_map.room_count);  // Debugging line
                 struct Point start_pos = new_map.initial_position;
+
+                // Create a visibility array for the map (all tiles are initially unexplored)
+                bool visible[MAP_HEIGHT][MAP_WIDTH] = {0}; // All tiles hidden initially
+                visible[start_pos.y][start_pos.x] = 1; // Make the starting position visible
+
+                // Print the map with the starting location and visibility
+                print_map(&new_map, visible, start_pos);
+
+                // Start the game
                 play_game(manager, &new_map, &start_pos, 0);
                 break;
             }

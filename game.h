@@ -8,6 +8,8 @@
 #include "users.h"
 #include "menu.h"
 
+#define MAX_ROOM_CONNECTION_DISTANCE 20  // Maximum allowable distance between room centers
+
 // Map symbols
 
 #define WALL_VERTICAL '|'
@@ -139,5 +141,7 @@ void draw_messages(struct MessageQueue* queue, int start_y, int start_x);
 // Map display
 void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct Point character_location);
 struct Map generate_map(void);
-
+bool validate_room_accessibility(struct Map* map);
+bool can_connect(struct Room* room1, struct Room* room2);
+void dfs_connect(struct Map* map, int room_idx, bool* visited);
 #endif

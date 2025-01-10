@@ -99,14 +99,26 @@ void play_game(struct UserManager* manager, struct Map* game_map,
     bool game_running = true;
     int score = initial_score;
 
+    printw("Game running");
+
+    // Initialize visibility array (all tiles hidden initially)
+    bool visible[MAP_HEIGHT][MAP_WIDTH] = {0}; 
+    visible[character_location->y][character_location->x] = 1; // Start position is visible
+
+    // Set visibility of rooms: Optionally, we can reveal entire rooms if we want.
+    update_visibility(game_map, character_location); // Initially update visibility.
+
     while (game_running) {
         clear();
 
-        // Update visibility (if you have a visibility mechanic)
+        // Debugging line to ensure the game is running
+        printf("Game running...\n");
+
+        // Update visibility: Update the visibility array based on the character's position
         update_visibility(game_map, character_location);
 
-        // Draw the map
-        print_map(game_map, game_map->visibility, *character_location);
+        // Print the map with visibility status
+        print_map(game_map, visible, *character_location);
 
         // Show game info
         mvprintw(MAP_HEIGHT + 1, 0, "Score: %d", score);
@@ -125,16 +137,21 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             case KEY_DOWN:
             case KEY_LEFT:
             case KEY_RIGHT:
+                // Move the character
                 move_character(character_location, key, game_map);
+
+                // After moving, update visibility for the new position
+                visible[character_location->y][character_location->x] = 1;
+
                 break;
             case 'q':
                 game_running = false;
                 break;
         }
 
-        // Check for game over conditions
+        // Check for game over conditions (e.g., player reaching the STAIRS)
         if (game_map->grid[character_location->y][character_location->x] == STAIRS) {
-            // Handle level completion
+            // Handle level completion (save score for the user)
             if (manager->current_user) {
                 manager->current_user->score += score;
                 save_users_to_json(manager);
@@ -143,6 +160,8 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         }
     }
 }
+
+
 
 
 // Implementation of print_point
@@ -356,99 +375,75 @@ void connect_doors(struct Map* game_map, struct Point door1, struct Point door2)
 }
 
 void create_corridor(struct Map* game_map, struct Room* room1, struct Room* room2) {
-    // Current date/time logging
-    time_t current_time = time(NULL);
-    struct tm* timeinfo = localtime(&current_time);
-    char time_str[26];
-    strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", timeinfo);
-    
-    // Get room centers for better door placement
+    // Get the centers of both rooms for better corridor placement
     int room1_center_x = room1->left_wall + (room1->right_wall - room1->left_wall) / 2;
     int room1_center_y = room1->top_wall + (room1->bottom_wall - room1->top_wall) / 2;
     int room2_center_x = room2->left_wall + (room2->right_wall - room2->left_wall) / 2;
     int room2_center_y = room2->top_wall + (room2->bottom_wall - room2->top_wall) / 2;
 
-    struct Point door1, door2;
-    bool horizontal_corridor = abs(room1_center_x - room2_center_x) > 
-                             abs(room1_center_y - room2_center_y);
+    struct Point door1 = { room1_center_x, room1_center_y };
+    struct Point door2 = { room2_center_x, room2_center_y };
 
-    // Determine door positions
-    if (horizontal_corridor) {
-        if (room1_center_x < room2_center_x) {
-            door1.x = room1->right_wall;
-            door1.y = room1_center_y;
-            door2.x = room2->left_wall;
-            door2.y = room2_center_y;
-        } else {
-            door1.x = room1->left_wall;
-            door1.y = room1_center_y;
-            door2.x = room2->right_wall;
-            door2.y = room2_center_y;
-        }
-    } else {
-        if (room1_center_y < room2_center_y) {
-            door1.x = room1_center_x;
-            door1.y = room1->bottom_wall;
-            door2.x = room2_center_x;
-            door2.y = room2->top_wall;
-        } else {
-            door1.x = room1_center_x;
-            door1.y = room1->top_wall;
-            door2.x = room2_center_x;
-            door2.y = room2->bottom_wall;
-        }
-    }
-
-    // Check door limits
+    // Check door limits (no more than MAX_DOORS in each room)
     if (room1->door_count >= MAX_DOORS || room2->door_count >= MAX_DOORS) {
         return;
     }
 
-    // Add doors to rooms
+    // Add doors to the rooms
     room1->doors[room1->door_count++] = door1;
     room2->doors[room2->door_count++] = door2;
 
-    // Place doors
+    // Place doors on the map
     game_map->grid[door1.y][door1.x] = DOOR;
     game_map->grid[door2.y][door2.x] = DOOR;
 
-    // Create the corridor
+    // Create the corridor: Either a straight line or L-shaped corridor
     int x = door1.x;
     int y = door1.y;
 
-    // Create L-shaped corridor
+    // Horizontal first or vertical first based on proximity
+    bool horizontal_corridor = abs(door1.x - door2.x) > abs(door1.y - door2.y);
+
+    // Ensure that corridor stays within map bounds
+    int start_x = (x < 0) ? 0 : (x >= MAP_WIDTH ? MAP_WIDTH - 1 : x);
+    int start_y = (y < 0) ? 0 : (y >= MAP_HEIGHT ? MAP_HEIGHT - 1 : y);
+    int end_x = (door2.x < 0) ? 0 : (door2.x >= MAP_WIDTH ? MAP_WIDTH - 1 : door2.x);
+    int end_y = (door2.y < 0) ? 0 : (door2.y >= MAP_HEIGHT ? MAP_HEIGHT - 1 : door2.y);
+
+    // Create straight or L-shaped corridor
     if (horizontal_corridor) {
         // Move horizontally first
         while (x != door2.x) {
-            x += (x < door2.x) ? 1 : -1;
-            if (game_map->grid[y][x] == FOG) {
+            if (x >= 0 && x < MAP_WIDTH && y >= 0 && y < MAP_HEIGHT) {
                 game_map->grid[y][x] = CORRIDOR;
             }
+            x += (x < door2.x) ? 1 : -1;
         }
         // Then vertically
         while (y != door2.y) {
-            y += (y < door2.y) ? 1 : -1;
-            if (game_map->grid[y][x] == FOG) {
+            if (x >= 0 && x < MAP_WIDTH && y >= 0 && y < MAP_HEIGHT) {
                 game_map->grid[y][x] = CORRIDOR;
             }
+            y += (y < door2.y) ? 1 : -1;
         }
     } else {
         // Move vertically first
         while (y != door2.y) {
-            y += (y < door2.y) ? 1 : -1;
-            if (game_map->grid[y][x] == FOG) {
+            if (x >= 0 && x < MAP_WIDTH && y >= 0 && y < MAP_HEIGHT) {
                 game_map->grid[y][x] = CORRIDOR;
             }
+            y += (y < door2.y) ? 1 : -1;
         }
         // Then horizontally
         while (x != door2.x) {
-            x += (x < door2.x) ? 1 : -1;
-            if (game_map->grid[y][x] == FOG) {
+            if (x >= 0 && x < MAP_WIDTH && y >= 0 && y < MAP_HEIGHT) {
                 game_map->grid[y][x] = CORRIDOR;
             }
+            x += (x < door2.x) ? 1 : -1;
         }
     }
 }
+
 
 void init_map(struct Map* map) {
     // Initialize empty map
@@ -470,62 +465,58 @@ bool rooms_overlap(const struct Room* r1, const struct Room* r2) {
 
 struct Map generate_map(void) {
     struct Map map;
-    
-    // Initialize map with empty spaces
-    for (int y = 0; y < MAP_HEIGHT; y++) {
-        for (int x = 0; x < MAP_WIDTH; x++) {
-            map.grid[y][x] = FOG;
-            map.visibility[y][x] = false;
-            map.discovered[y][x] = false;
-        }
-    }
-    
-    // Initialize other map properties
-    map.room_count = 0;
-    
+    init_map(&map);
+
     // Generate rooms
+    map.room_count = 0;
     int num_rooms = MIN_ROOMS + rand() % (MAX_ROOMS - MIN_ROOMS + 1);
-    
+
+    // Generate rooms
     for (int i = 0; i < num_rooms; i++) {
         struct Room room;
-        int tries = 0;
+        int attempts = 0;
         bool placed = false;
-        
-        while (!placed && tries < 100) {
-            int width = MIN_ROOM_SIZE + rand() % (MAX_ROOM_SIZE - MIN_ROOM_SIZE + 1);
-            int height = MIN_ROOM_SIZE + rand() % (MAX_ROOM_SIZE - MIN_ROOM_SIZE + 1);
-            
-            room.left_wall = 1 + rand() % (MAP_WIDTH - width - 2);
-            room.top_wall = 1 + rand() % (MAP_HEIGHT - height - 2);
-            room.right_wall = room.left_wall + width;
-            room.bottom_wall = room.top_wall + height;
-            room.width = width;
-            room.height = height;
+
+        while (!placed && attempts < 100) {
+            room.width = MIN_ROOM_SIZE + rand() % (MAX_ROOM_SIZE - MIN_ROOM_SIZE + 1);
+            room.height = MIN_ROOM_SIZE + rand() % (MAX_ROOM_SIZE - MIN_ROOM_SIZE + 1);
+            room.left_wall = 1 + rand() % (MAP_WIDTH - room.width - 2);
+            room.top_wall = 1 + rand() % (MAP_HEIGHT - room.height - 2);
+            room.right_wall = room.left_wall + room.width;
+            room.bottom_wall = room.top_wall + room.height;
             room.door_count = 0;
             room.has_stairs = false;
             room.visited = false;
-            
+
             if (is_valid_room_placement(&map, &room)) {
                 map.rooms[map.room_count++] = room;
                 place_room(&map, &room);
                 placed = true;
             }
-            tries++;
+            attempts++;
         }
     }
-    
-    // Connect rooms
-    connect_rooms(&map);
-    
-    // Place stairs
-    place_stairs(&map);
-    
-    // Set initial position in first room
-    map.initial_position.x = map.rooms[0].left_wall + map.rooms[0].width / 2;
-    map.initial_position.y = map.rooms[0].top_wall + map.rooms[0].height / 2;
-    
+
+    // Connect rooms with corridors
+    connect_rooms(&map); // This function should ensure rooms are connected
+
+    // Ensure rooms are accessible (a path exists between all rooms)
+    while (!validate_room_accessibility(&map)) {
+        connect_rooms(&map); // If not accessible, reconnect rooms
+    }
+
+    // Ensure that the stairs are placed in a valid room (make sure it is accessible)
+    place_stairs(&map); // Assuming `place_stairs` ensures the stairs are placed somewhere valid
+
+    // Set initial player position in the first room
+    if (map.room_count > 0) {
+        map.initial_position.x = map.rooms[0].left_wall + map.rooms[0].width / 2;
+        map.initial_position.y = map.rooms[0].top_wall + map.rooms[0].height / 2;
+    }
+
     return map;
 }
+
 
 void message(const char* text) {
     mvprintw(MAP_HEIGHT, 0, "%s", text);
@@ -552,39 +543,6 @@ void move_character(struct Point* character_location, int key, struct Map* game_
          game_map->grid[new_location.y][new_location.x] == DOOR)) {
         // Update position
         *character_location = new_location;
-    }
-}
-
-
-
-void connect_rooms(struct Map* map) {
-    // Connect each room to its nearest unconnected neighbor
-    for (int i = 0; i < map->room_count; i++) {
-        struct Room* room1 = &map->rooms[i];
-        
-        // Find nearest room to connect
-        int nearest = -1;
-        int min_distance = INT_MAX;
-        
-        for (int j = 0; j < map->room_count; j++) {
-            if (i == j) continue;
-            
-            struct Room* room2 = &map->rooms[j];
-            int dx = (room1->left_wall + room1->right_wall)/2 - 
-                    (room2->left_wall + room2->right_wall)/2;
-            int dy = (room1->top_wall + room1->bottom_wall)/2 - 
-                    (room2->top_wall + room2->bottom_wall)/2;
-            int distance = abs(dx) + abs(dy);
-            
-            if (distance < min_distance) {
-                min_distance = distance;
-                nearest = j;
-            }
-        }
-        
-        if (nearest != -1) {
-            create_corridor(map, &map->rooms[i], &map->rooms[nearest]);
-        }
     }
 }
 
@@ -1078,3 +1036,82 @@ void place_windows(struct Map* map, struct Room* room) {
         }
     }
 }
+
+// DFS to check if all rooms are connected
+
+void dfs_connect(struct Map* map, int room_idx, bool* visited) {
+    visited[room_idx] = true;
+    
+    // Visit all neighboring rooms
+    for (int i = 0; i < map->room_count; i++) {
+        if (!visited[i]) {
+            struct Room* room1 = &map->rooms[room_idx];
+            struct Room* room2 = &map->rooms[i];
+
+            // Check if room1 and room2 are close enough to be connected
+            if (can_connect(room1, room2)) { // You need a function that checks if two rooms can be connected.
+                create_corridor(map, room1, room2); // Create corridor between room1 and room2
+                dfs_connect(map, i, visited); // Recursively connect the next room
+            }
+        }
+    }
+}
+
+// Function to check if two rooms can be connected (basic check for proximity)
+
+bool can_connect(struct Room* room1, struct Room* room2) {
+    int dx = (room1->left_wall + room1->right_wall) / 2 - (room2->left_wall + room2->right_wall) / 2;
+    int dy = (room1->top_wall + room1->bottom_wall) / 2 - (room2->top_wall + room2->bottom_wall) / 2;
+    int distance = abs(dx) + abs(dy);
+
+    return distance < MAX_ROOM_CONNECTION_DISTANCE; // Arbitrary threshold for how close rooms must be
+}
+
+// Modified connect_rooms function
+void connect_rooms(struct Map* map) {
+    bool* visited = (bool*)calloc(map->room_count, sizeof(bool)); // Array to track visited rooms
+    
+    // Start DFS from the first room
+    dfs_connect(map, 0, visited);
+    
+    // Ensure all rooms are connected, check if there's any unvisited room
+    for (int i = 0; i < map->room_count; i++) {
+        if (!visited[i]) {
+            // If any room is not visited, connect it to the first visited room
+            create_corridor(map, &map->rooms[0], &map->rooms[i]);
+        }
+    }
+
+    free(visited); // Free the visited array
+}
+
+bool validate_room_accessibility(struct Map* map) {
+    bool visited[MAX_ROOMS] = {false};
+    int stack[MAX_ROOMS];
+    int top = 0;
+
+    // Start from the first room
+    visited[0] = true;
+    stack[top++] = 0;
+
+    // Perform a depth-first search (DFS)
+    while (top > 0) {
+        int current = stack[--top];
+
+        for (int i = 0; i < map->room_count; i++) {
+            if (i != current && !visited[i] && areRoomsConnectable(&map->rooms[current], &map->rooms[i])) {
+                visited[i] = true;
+                stack[top++] = i;
+            }
+        }
+    }
+
+    // Check if all rooms were visited
+    for (int i = 0; i < map->room_count; i++) {
+        if (!visited[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
