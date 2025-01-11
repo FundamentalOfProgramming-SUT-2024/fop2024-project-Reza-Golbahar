@@ -188,13 +188,11 @@ int users_menu(struct UserManager* manager) {
     int user_id = 0;
     while (!user_id) {
         clear();
-        mvprintw(0, 0, "\nPress [+] to add new user. Or not, Press the number for each. Press [q] to quit.");
+        mvprintw(0, 0, "\nPress the number for the user you want to choose. Press [q] to quit.");
         print_users(manager);
         char input[10];
         mvscanw(manager->user_count + 5, 0, "%s", input);
-        if (strcmp(input, "+") == 0)
-            adding_new_user(manager);
-        else if (strcmp(input, "q") == 0)
+        if (strcmp(input, "q") == 0)
             clear();
         else {
             int num_input = atoi(input);
@@ -211,16 +209,11 @@ int users_menu(struct UserManager* manager) {
 bool entering_menu(struct UserManager* manager, int selected_index) {
     while (1) {
         clear();
-        printw("Enter the password for the chosen username, or type 'G' if you want to play as a guest user: ");
+        printw("Enter the password for the chosen username");
         char password[MAX_STRING_LEN];
         noecho();
         scanw("%s", password);
         echo();
-
-        if (strcmp(password, "G") == 0) {
-            manager->current_user = NULL;  // Guest user
-            return true;
-        }
 
         if (authenticate_user(manager, selected_index - 1, password)) {
             printw("Password is correct.\n");
@@ -403,10 +396,10 @@ void pre_game_menu(struct UserManager* manager) {
                 // Load game functionality
                 break;
             case '3':
-                // Show scoreboard
+                print_scoreboard(manager);
                 break;
             case '4':
-                // Settings menu
+                settings(manager);
                 break;
             case '5':
                 running = false;

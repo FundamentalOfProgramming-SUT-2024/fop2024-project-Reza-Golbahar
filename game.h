@@ -21,7 +21,9 @@
 #define WINDOW '='
 #define STAIRS '>'
 #define FOG ' '
-#define FOOD '$'
+#define GOLD '$'
+#define FOOD 'T'
+#define TRAP_SYMBOL '^'
 
 // Map constants
 #define MAP_WIDTH 80
@@ -68,6 +70,7 @@ struct Map {
     bool discovered[MAP_HEIGHT][MAP_WIDTH];
     struct Room rooms[MAX_ROOMS];
     int room_count;
+    bool trap_triggered[MAP_HEIGHT][MAP_WIDTH]; // Add this line
     struct Point stairs_location;
     struct Point initial_position;
 };
@@ -96,7 +99,12 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                struct Point* character_location, int initial_score);
 struct Map generate_map(void);
 void init_map(struct Map* map);
-
+void create_corridors(Room* rooms, int room_count, char map[MAP_HEIGHT][MAP_WIDTH]);
+struct Point find_door_position(struct Map* map, struct Room* room);
+void draw_corridor_segment(struct Map* map, int start_x, int start_y, int end_x, int end_y);
+void open_food_menu(int* food_inventory, int* food_count);
+void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count, int* score, int* hitpoints);
+void add_traps(struct Map* game_map);
 // Room and map generation
 bool is_valid_room_placement(struct Map* map, struct Room* room);
 void place_room(struct Map* map, struct Room* room);
@@ -109,8 +117,10 @@ void save_current_game(struct UserManager* manager, struct Map* game_map,
                       struct Point* character_location, int score);
 bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game);
 void list_saved_games(struct UserManager* manager);
-void generate_doors_for_rooms(struct Map* map);
+void connect_rooms(struct Map* map, struct Room* room1, struct Room* room2);
+void create_l_shaped_corridor(struct Map* map, struct Point start, struct Point end);
 void connect_rooms_with_corridors(struct Map* map);
+void add_gold(struct Map* game_map);
 
 
 // Movement and visibility

@@ -12,7 +12,7 @@
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 
 #define MIN_ROOM_COUNT 6
-#define MIN_WIDTH_OR_LENGTH 4
+#define MIN_WIDTH_OR_LENGTH 6
 #define MAX_POINTS 100
 #define MAX_ROOMS 10
 #define MAP_WIDTH 80
@@ -129,33 +129,74 @@ void generate_doors_for_rooms(struct Map* map) {
 
 void play_game(struct UserManager* manager, struct Map* game_map, 
                struct Point* character_location, int initial_score) {
-    refresh();
-
     bool game_running = true;
     int score = initial_score;
 
+    // Initialize player attributes
+    int hitpoints = 100;            // Initial hitpoints
+    int hunger_rate = 0;            // Initial hunger rate
+    const int MAX_HUNGER = 100;     // Threshold for hunger affecting hitpoints
+    const int HUNGER_INCREASE_INTERVAL = 50; // Frames for hunger to increase
+    const int HUNGER_DAMAGE_INTERVAL = 20;   // Frames for hitpoint loss due to hunger
+    const int HITPOINT_DECREASE_RATE = 5;    // Hitpoints lost due to hunger
+
+    // Timers for hunger and hunger damage
+    int frame_count = 0;
+    int hunger_damage_timer = 0;
+
+    // Initialize food and gold inventories
+    int food_inventory[5] = {0};
+    int food_count = 0;
+    int gold_count = 0;
+
     // Initialize visibility array (all tiles hidden initially)
-    bool visible[MAP_HEIGHT][MAP_WIDTH] = {0};
-    visible[character_location->y][character_location->x] = 1; // Starting position is visible
+    bool visible[MAP_HEIGHT][MAP_WIDTH] = {0}; 
+    visible[character_location->y][character_location->x] = 1; // Start position is visible
 
     while (game_running) {
         clear();
 
-        // Update visibility: Update the visibility array based on the character's position
+        // Update visibility
         update_visibility(game_map, character_location, visible);
 
-        // Print the map: Use print_map to render the game map with visibility applied
+        // Print the game map
         print_map(game_map, visible, *character_location);
 
         // Show game info
         mvprintw(MAP_HEIGHT + 1, 0, "Score: %d", score);
+        mvprintw(MAP_HEIGHT + 2, 0, "Hitpoints: %d", hitpoints);
+        mvprintw(MAP_HEIGHT + 3, 0, "Hunger: %d/%d", hunger_rate, MAX_HUNGER);
         if (manager->current_user) {
-            mvprintw(MAP_HEIGHT + 2, 0, "Player: %s", manager->current_user->username);
+            mvprintw(MAP_HEIGHT + 4, 0, "Player: %s", manager->current_user->username);
         } else {
-            mvprintw(MAP_HEIGHT + 2, 0, "Player: Guest");
+            mvprintw(MAP_HEIGHT + 4, 0, "Player: Guest");
         }
-        mvprintw(MAP_HEIGHT + 3, 0, "Use arrow keys to move, 'q' to quit");
+        mvprintw(MAP_HEIGHT + 5, 0, "Use arrow keys to move, 'q' to quit, 'e' for inventory menu");
         refresh();
+
+        // Increase hunger rate over time
+        if (frame_count % HUNGER_INCREASE_INTERVAL == 0) {
+            hunger_rate++;
+        }
+
+        // Decrease hitpoints if hunger exceeds threshold
+        if (hunger_rate >= MAX_HUNGER) {
+            if (hunger_damage_timer % HUNGER_DAMAGE_INTERVAL == 0) {
+                hitpoints -= HITPOINT_DECREASE_RATE;
+            }
+            hunger_damage_timer++;
+        } else {
+            hunger_damage_timer = 0; // Reset damage timer if hunger is below threshold
+        }
+
+        // Check if hitpoints are zero
+        if (hitpoints <= 0) {
+            mvprintw(MAP_HEIGHT + 6, 0, "Game Over! You ran out of hitpoints.");
+            refresh();
+            getch();
+            game_running = false;
+            break;
+        }
 
         // Handle input
         int key = getch();
@@ -163,40 +204,167 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             case KEY_UP:
             case KEY_DOWN:
             case KEY_LEFT:
-            case KEY_RIGHT: {
-                // Move the character and update visibility
-                struct Point new_location = *character_location;
-                move_character(&new_location, key, game_map);
+            case KEY_RIGHT:
+                // Move the character
+                move_character(character_location, key, game_map);
 
-                // Check if the new position is valid
-                if (game_map->grid[new_location.y][new_location.x] != WALL_HORIZONTAL &&
-                    game_map->grid[new_location.y][new_location.x] != WALL_VERTICAL) {
-                    *character_location = new_location;
-                    visible[character_location->y][character_location->x] = 1; // Reveal tile
+                // Check the tile the player moves onto
+                if (game_map->grid[character_location->y][character_location->x] == FOOD) {
+                if (food_count < 5) {
+                    // Collect food
+                    game_map->grid[character_location->y][character_location->x] = FLOOR;
+                    food_inventory[food_count++] = 1;
                 }
+                } else if (game_map->grid[character_location->y][character_location->x] == GOLD) {
+                    // Collect gold
+                    game_map->grid[character_location->y][character_location->x] = FLOOR;
+                    gold_count++;
+                    score += 10;
+                } else if (game_map->grid[character_location->y][character_location->x] == FOG) {
+                    // Hidden trap triggered
+                    mvprintw(MAP_HEIGHT + 6, 0, "You triggered a trap! Hitpoints decreased.");
+                    game_map->grid[character_location->y][character_location->x] = TRAP_SYMBOL; // Reveal trap
+                    hitpoints -= 10; // Decrease hitpoints
+                    refresh();
+                    getch(); // Pause to let the player see the message
+                }
+                    break;
+
+            case 'e':
+                // Open inventory menu
+                open_inventory_menu(food_inventory, &food_count, &gold_count, &score, &hunger_rate);
                 break;
-            }
+
             case 'q':
                 game_running = false;
                 break;
         }
 
-        // Check for game over conditions (e.g., player reaching the STAIRS)
+        // Check for level completion
         if (game_map->grid[character_location->y][character_location->x] == STAIRS) {
-            clear();
-            mvprintw(0, 0, "You found the stairs! Level completed.");
-            refresh();
-            getch();
-
-            // Handle level completion (save score for the user)
+            // Save score for user
             if (manager->current_user) {
                 manager->current_user->score += score;
                 save_users_to_json(manager);
             }
             game_running = false;
         }
+
+        frame_count++;
     }
 }
+
+void add_traps(struct Map* game_map) {
+    const int TRAP_COUNT = 10;  // Adjust the number of traps
+    int traps_placed = 0;
+
+    while (traps_placed < TRAP_COUNT) {
+        int x = rand() % MAP_WIDTH;
+        int y = rand() % MAP_HEIGHT;
+
+        // Place traps only on floor tiles
+        if (game_map->grid[y][x] == FLOOR) {
+            game_map->grid[y][x] = FOG; // Hidden trap
+            traps_placed++;
+        }
+    }
+}
+
+
+void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count, int* score, int* hunger_rate) {
+    bool menu_open = true;
+
+    while (menu_open) {
+        clear();
+        mvprintw(0, 0, "Inventory Menu");
+        mvprintw(2, 0, "Food Inventory:");
+
+        // Display food inventory
+        for (int i = 0; i < 5; i++) {
+            if (food_inventory[i] == 1) {
+                mvprintw(4 + i, 0, "Slot %d: Food", i + 1);
+            } else {
+                mvprintw(4 + i, 0, "Slot %d: Empty", i + 1);
+            }
+        }
+
+        mvprintw(10, 0, "Gold Collected: %d", *gold_count);
+        mvprintw(11, 0, "Hunger: %d", *hunger_rate);
+        mvprintw(13, 0, "Press 'u' followed by slot number to use food, 'q' to exit menu.");
+        refresh();
+
+        // Handle input for the inventory menu
+        int key = getch();
+        if (key == 'q') {
+            menu_open = false; // Exit menu
+        } else if (key == 'u') {
+            // Get slot number
+            mvprintw(14, 0, "Enter slot number (1-5): ");
+            refresh();
+            int slot = getch() - '0'; // Convert char to integer
+
+            if (slot >= 1 && slot <= 5 && food_inventory[slot - 1] == 1) {
+                // Use food
+                food_inventory[slot - 1] = 0;
+                (*food_count)--;
+                mvprintw(16, 0, "You used food from slot %d! Hunger decreased.", slot);
+                *hunger_rate = MAX(*hunger_rate - 20, 0); // Decrease hunger rate
+            } else {
+                mvprintw(16, 0, "Invalid slot or no food in slot!");
+            }
+            refresh();
+            getch(); // Wait for player to acknowledge
+        }
+    }
+}
+
+
+
+
+void open_food_menu(int* food_inventory, int* food_count) {
+    bool menu_open = true;
+
+    while (menu_open) {
+        clear();
+        mvprintw(0, 0, "Food Menu");
+        mvprintw(2, 0, "Your Food Inventory:");
+
+        for (int i = 0; i < 5; i++) {
+            if (food_inventory[i] == 1) {
+                mvprintw(4 + i, 0, "Slot %d: Food", i + 1);
+            } else {
+                mvprintw(4 + i, 0, "Slot %d: Empty", i + 1);
+            }
+        }
+
+        mvprintw(10, 0, "Press 'u' followed by slot number to use food, 'q' to quit menu.");
+        refresh();
+
+        // Handle input for the food menu
+        int key = getch();
+        if (key == 'q') {
+            menu_open = false; // Exit menu
+        } else if (key == 'u') {
+            // Get slot number
+            mvprintw(12, 0, "Enter slot number (1-5): ");
+            refresh();
+            int slot = getch() - '0'; // Convert char to integer
+
+            if (slot >= 1 && slot <= 5 && food_inventory[slot - 1] == 1) {
+                // Use food from the specified slot
+                food_inventory[slot - 1] = 0;
+                (*food_count)--;
+                mvprintw(14, 0, "You used food from slot %d!", slot);
+            } else {
+                mvprintw(14, 0, "Invalid slot or no food in slot!");
+            }
+            refresh();
+            getch(); // Wait for player to acknowledge
+        }
+    }
+}
+
+
 
 
 // Implementation of print_point
@@ -329,23 +497,31 @@ void showCorridorVisibility(struct Map* game_map, int x, int y) {
 void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct Point character_location) {
     for (int y = 0; y < MAP_HEIGHT; y++) {
         for (int x = 0; x < MAP_WIDTH; x++) {
-            char display_char;
-
-            if (x == character_location.x && y == character_location.y) {
-                display_char = '@'; // Player character
+            if (character_location.x == x && character_location.y == y) {
+                // Display player location
+                mvaddch(y, x, '@');
             } else if (visible[y][x]) {
-                display_char = game_map->grid[y][x]; // Visible tiles
-            } else if (game_map->discovered[y][x]) {
-                display_char = game_map->grid[y][x]; // Previously discovered tiles
+                // Visible area
+                if (game_map->grid[y][x] == TRAP_SYMBOL) {
+                    if (game_map->trap_triggered[y][x]) {
+                        // Show triggered traps as '^'
+                        mvaddch(y, x, '^');
+                    } else {
+                        // Show untriggered traps as '.'
+                        mvaddch(y, x, '.');
+                    }
+                } else {
+                    // Display actual grid content
+                    mvaddch(y, x, game_map->grid[y][x]);
+                }
             } else {
-                display_char = FOG; // Unexplored tiles
+                // Unexplored area
+                mvaddch(y, x, ' ');
             }
-
-            mvaddch(y, x, display_char);
         }
     }
-    refresh();
 }
+
 
 void connect_rooms_with_corridors(struct Map* map) {
     bool connected[MAX_ROOMS] = { false };
@@ -356,19 +532,24 @@ void connect_rooms_with_corridors(struct Map* map) {
         int best_dst = -1;
         int min_distance = INT_MAX;
 
-        // Find the closest pair of rooms: one connected, one unconnected
+        // Find closest unconnected rooms
         for (int i = 0; i < map->room_count; i++) {
             if (!connected[i]) continue;
 
             for (int j = 0; j < map->room_count; j++) {
                 if (connected[j]) continue;
 
-                int room1_center_x = (map->rooms[i].left_wall + map->rooms[i].right_wall) / 2;
-                int room1_center_y = (map->rooms[i].top_wall + map->rooms[i].bottom_wall) / 2;
-                int room2_center_x = (map->rooms[j].left_wall + map->rooms[j].right_wall) / 2;
-                int room2_center_y = (map->rooms[j].top_wall + map->rooms[j].bottom_wall) / 2;
+                struct Room* room1 = &map->rooms[i];
+                struct Room* room2 = &map->rooms[j];
 
-                int distance = abs(room1_center_x - room2_center_x) + abs(room1_center_y - room2_center_y);
+                int room1_center_x = (room1->left_wall + room1->right_wall) / 2;
+                int room1_center_y = (room1->top_wall + room1->bottom_wall) / 2;
+                int room2_center_x = (room2->left_wall + room2->right_wall) / 2;
+                int room2_center_y = (room2->top_wall + room2->bottom_wall) / 2;
+
+                int distance = abs(room1_center_x - room2_center_x) + 
+                               abs(room1_center_y - room2_center_y);
+
                 if (distance < min_distance) {
                     min_distance = distance;
                     best_src = i;
@@ -379,63 +560,146 @@ void connect_rooms_with_corridors(struct Map* map) {
 
         if (best_src != -1 && best_dst != -1) {
             connected[best_dst] = true;
+            struct Room* src_room = &map->rooms[best_src];
+            struct Room* dst_room = &map->rooms[best_dst];
 
-            // Connect the two rooms with a corridor
-            int start_x = (map->rooms[best_src].left_wall + map->rooms[best_src].right_wall) / 2;
-            int start_y = (map->rooms[best_src].top_wall + map->rooms[best_src].bottom_wall) / 2;
-            int end_x = (map->rooms[best_dst].left_wall + map->rooms[best_dst].right_wall) / 2;
-            int end_y = (map->rooms[best_dst].top_wall + map->rooms[best_dst].bottom_wall) / 2;
+            // Start and end points for the corridor
+            int start_x = (src_room->left_wall + src_room->right_wall) / 2;
+            int start_y = (src_room->top_wall + src_room->bottom_wall) / 2;
+            int end_x = (dst_room->left_wall + dst_room->right_wall) / 2;
+            int end_y = (dst_room->top_wall + dst_room->bottom_wall) / 2;
 
-            // Create an L-shaped corridor
-            if (rand() % 2 == 0) {
-                // Horizontal first, then vertical
-                int current_x = start_x;
-                while (current_x != end_x) {
-                    if (map->grid[start_y][current_x] == FOG) {
-                        map->grid[start_y][current_x] = '#';
+            struct Point current = { start_x, start_y };
+
+            // Randomize horizontal or vertical movement first
+            bool horizontal_first = rand() % 2 == 0;
+
+            while (current.x != end_x || current.y != end_y) {
+                if ((horizontal_first && current.x != end_x) || current.y == end_y) {
+                    // Move horizontally
+                    int next_x = current.x + ((current.x < end_x) ? 1 : -1);
+
+                    if (map->grid[current.y][next_x] == WALL_HORIZONTAL || 
+                        map->grid[current.y][next_x] == WALL_VERTICAL) {
+                        // Place a door at the intersection with the wall
+                        map->grid[current.y][next_x] = DOOR;
+                    } else if (map->grid[current.y][next_x] == FOG) {
+                        // Place corridor
+                        map->grid[current.y][next_x] = CORRIDOR;
                     }
-                    current_x += (current_x < end_x) ? 1 : -1;
+                    current.x = next_x;
+                } else {
+                    // Move vertically
+                    int next_y = current.y + ((current.y < end_y) ? 1 : -1);
+
+                    if (map->grid[next_y][current.x] == WALL_HORIZONTAL || 
+                        map->grid[next_y][current.x] == WALL_VERTICAL) {
+                        // Place a door at the intersection with the wall
+                        map->grid[next_y][current.x] = DOOR;
+                    } else if (map->grid[next_y][current.x] == FOG) {
+                        // Place corridor
+                        map->grid[next_y][current.x] = CORRIDOR;
+                    }
+                    current.y = next_y;
                 }
 
-                int current_y = start_y;
-                while (current_y != end_y) {
-                    if (map->grid[current_y][end_x] == FOG) {
-                        map->grid[current_y][end_x] = '#';
-                    }
-                    current_y += (current_y < end_y) ? 1 : -1;
-                }
-            } else {
-                // Vertical first, then horizontal
-                int current_y = start_y;
-                while (current_y != end_y) {
-                    if (map->grid[current_y][start_x] == FOG) {
-                        map->grid[current_y][start_x] = '#';
-                    }
-                    current_y += (current_y < end_y) ? 1 : -1;
-                }
+                // Randomize next move direction
+                horizontal_first = !horizontal_first;
+            }
 
-                int current_x = start_x;
-                while (current_x != end_x) {
-                    if (map->grid[end_y][current_x] == FOG) {
-                        map->grid[end_y][current_x] = '#';
-                    }
-                    current_x += (current_x < end_x) ? 1 : -1;
-                }
+            // Ensure doors adjacent to corridor ends, only on walls
+            if (map->grid[start_y][start_x] == WALL_HORIZONTAL || 
+                map->grid[start_y][start_x] == WALL_VERTICAL) {
+                map->grid[start_y][start_x] = DOOR;
+            }
+
+            if (map->grid[end_y][end_x] == WALL_HORIZONTAL || 
+                map->grid[end_y][end_x] == WALL_VERTICAL) {
+                map->grid[end_y][end_x] = DOOR;
+            }
+
+            // Add doors to adjacent tiles at corridor ends, only on walls
+            if (start_y > 0 && (map->grid[start_y - 1][start_x] == WALL_HORIZONTAL || 
+                                map->grid[start_y - 1][start_x] == WALL_VERTICAL)) {
+                map->grid[start_y - 1][start_x] = DOOR;
+            }
+            if (start_y < MAP_HEIGHT - 1 && (map->grid[start_y + 1][start_x] == WALL_HORIZONTAL || 
+                                             map->grid[start_y + 1][start_x] == WALL_VERTICAL)) {
+                map->grid[start_y + 1][start_x] = DOOR;
+            }
+            if (start_x > 0 && (map->grid[start_y][start_x - 1] == WALL_HORIZONTAL || 
+                                map->grid[start_y][start_x - 1] == WALL_VERTICAL)) {
+                map->grid[start_y][start_x - 1] = DOOR;
+            }
+            if (start_x < MAP_WIDTH - 1 && (map->grid[start_y][start_x + 1] == WALL_HORIZONTAL || 
+                                            map->grid[start_y][start_x + 1] == WALL_VERTICAL)) {
+                map->grid[start_y][start_x + 1] = DOOR;
+            }
+
+            if (end_y > 0 && (map->grid[end_y - 1][end_x] == WALL_HORIZONTAL || 
+                              map->grid[end_y - 1][end_x] == WALL_VERTICAL)) {
+                map->grid[end_y - 1][end_x] = DOOR;
+            }
+            if (end_y < MAP_HEIGHT - 1 && (map->grid[end_y + 1][end_x] == WALL_HORIZONTAL || 
+                                           map->grid[end_y + 1][end_x] == WALL_VERTICAL)) {
+                map->grid[end_y + 1][end_x] = DOOR;
+            }
+            if (end_x > 0 && (map->grid[end_y][end_x - 1] == WALL_HORIZONTAL || 
+                              map->grid[end_y][end_x - 1] == WALL_VERTICAL)) {
+                map->grid[end_y][end_x - 1] = DOOR;
+            }
+            if (end_x < MAP_WIDTH - 1 && (map->grid[end_y][end_x + 1] == WALL_HORIZONTAL || 
+                                          map->grid[end_y][end_x + 1] == WALL_VERTICAL)) {
+                map->grid[end_y][end_x + 1] = DOOR;
             }
         }
     }
 }
 
+// Update movement validation to handle doors
+void move_character(struct Point* character_location, int key, struct Map* game_map) {
+    struct Point new_location = *character_location;
+
+    switch (key) {
+        case KEY_UP:    new_location.y--; break;
+        case KEY_DOWN:  new_location.y++; break;
+        case KEY_LEFT:  new_location.x--; break;
+        case KEY_RIGHT: new_location.x++; break;
+        default: return;
+    }
+
+    // Check if new position is valid
+    if (new_location.x >= 0 && new_location.x < MAP_WIDTH &&
+        new_location.y >= 0 && new_location.y < MAP_HEIGHT) {
+        
+        char target_tile = game_map->grid[new_location.y][new_location.x];
+        
+        // Allow movement through floors, corridors, and doors
+        if (target_tile != FOG && 
+            target_tile != WINDOW && 
+            target_tile != WALL_HORIZONTAL &&
+            target_tile != WALL_VERTICAL &&
+            target_tile != PILLAR) {
+            *character_location = new_location;
+        }
+    }
+}
+
+
+
+
 void init_map(struct Map* map) {
-    // Initialize empty map
     for (int y = 0; y < MAP_HEIGHT; y++) {
         for (int x = 0; x < MAP_WIDTH; x++) {
             map->grid[y][x] = FOG;
             map->visibility[y][x] = false;
             map->discovered[y][x] = false;
+            map->trap_triggered[y][x] = false; // Initialize to false
         }
     }
+    map->room_count = 0;
 }
+
 
 bool rooms_overlap(const struct Room* r1, const struct Room* r2) {
     return !(r1->right_wall + MIN_ROOM_DISTANCE < r2->left_wall ||
@@ -477,11 +741,19 @@ struct Map generate_map(void) {
         }
     }
 
+    // Generate doors for rooms
     generate_doors_for_rooms(&map);
+
+    // Connect rooms with corridors
     connect_rooms_with_corridors(&map);
 
-    // Place stairs
+    // Place stairs in a random room
     place_stairs(&map);
+
+    // Spawn food and gold in random places inside rooms
+    add_food(&map);
+    add_gold(&map);
+    add_traps(&map);  // Add traps to the map
 
     // Set initial player position
     if (map.room_count > 0) {
@@ -493,34 +765,26 @@ struct Map generate_map(void) {
 }
 
 
+void add_gold(struct Map* game_map) {
+    const int GOLD_COUNT = 10;  // Adjust as needed
+    int gold_placed = 0;
+    
+    while (gold_placed < GOLD_COUNT) {
+        int x = rand() % MAP_WIDTH;
+        int y = rand() % MAP_HEIGHT;
+        
+        // Place gold only on floor tiles
+        if (game_map->grid[y][x] == FLOOR) {
+            game_map->grid[y][x] = GOLD;  // Assume GOLD is defined, e.g., `#define GOLD '$'`
+            gold_placed++;
+        }
+    }
+}
 
 
 void message(const char* text) {
     mvprintw(MAP_HEIGHT, 0, "%s", text);
     refresh();
-}
-
-void move_character(struct Point* character_location, int key, struct Map* game_map) {
-    struct Point new_location = *character_location;
-
-    // Determine new position based on key input
-    switch (key) {
-        case KEY_UP:    new_location.y--; break;
-        case KEY_DOWN:  new_location.y++; break;
-        case KEY_LEFT:  new_location.x--; break;
-        case KEY_RIGHT: new_location.x++; break;
-        default: return; // Ignore invalid keys
-    }
-
-    // Validate new position
-    if (new_location.x >= 0 && new_location.x < MAP_WIDTH &&
-        new_location.y >= 0 && new_location.y < MAP_HEIGHT &&
-        (game_map->grid[new_location.y][new_location.x] == FLOOR || 
-         game_map->grid[new_location.y][new_location.x] == CORRIDOR || 
-         game_map->grid[new_location.y][new_location.x] == DOOR)) {
-        // Update position
-        *character_location = new_location;
-    }
 }
 
 bool isPointInRoom(struct Point* point, struct Room* room) {
