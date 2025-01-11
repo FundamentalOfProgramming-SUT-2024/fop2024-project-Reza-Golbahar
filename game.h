@@ -109,6 +109,7 @@ void save_current_game(struct UserManager* manager, struct Map* game_map,
                       struct Point* character_location, int score);
 bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game);
 void list_saved_games(struct UserManager* manager);
+void generate_doors_for_rooms(struct Map* map);
 
 
 // Movement and visibility

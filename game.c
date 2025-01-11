@@ -85,15 +85,50 @@ void game_menu(struct UserManager* manager) {
     }
 }
 
+void generate_doors_for_rooms(struct Map* map) {
+    for (int i = 0; i < map->room_count; i++) {
+        struct Room* room = &map->rooms[i];
+        int door_count = 0;
+
+        // Ensure maximum number of doors per room
+        while (door_count < MAX_DOORS) {
+            // Randomly select a wall (0: top, 1: bottom, 2: left, 3: right)
+            int wall = rand() % 4;
+
+            // Generate a random position on the selected wall
+            int x = 0, y = 0;
+            switch (wall) {
+                case 0: // Top wall
+                    x = room->left_wall + 1 + rand() % (room->width - 2);
+                    y = room->top_wall;
+                    break;
+                case 1: // Bottom wall
+                    x = room->left_wall + 1 + rand() % (room->width - 2);
+                    y = room->bottom_wall;
+                    break;
+                case 2: // Left wall
+                    x = room->left_wall;
+                    y = room->top_wall + 1 + rand() % (room->height - 2);
+                    break;
+                case 3: // Right wall
+                    x = room->right_wall;
+                    y = room->top_wall + 1 + rand() % (room->height - 2);
+                    break;
+            }
+
+            // Place the door if the position is valid
+            if (map->grid[y][x] == WALL_HORIZONTAL || map->grid[y][x] == WALL_VERTICAL) {
+                map->grid[y][x] = DOOR;
+                room->doors[room->door_count++] = (struct Point){x, y};
+                door_count++;
+            }
+        }
+    }
+}
+
+
 void play_game(struct UserManager* manager, struct Map* game_map, 
                struct Point* character_location, int initial_score) {
-    // Print the map for debugging (initial state)
-    for (int y = 0; y < MAP_HEIGHT; y++) {
-        for (int x = 0; x < MAP_WIDTH; x++) {
-            printw("%c", game_map->grid[y][x]);
-        }
-        printw("\n");
-    }
     refresh();
 
     bool game_running = true;
@@ -352,7 +387,7 @@ void create_corridors(struct Map* game_map, Room* rooms, int room_count) {
                 int current_x = start_x;
                 while (current_x != end_x) {
                     if (game_map->grid[start_y][current_x] == ' ') {
-                        game_map->grid[start_y][current_x] = '=';  // Corridor
+                        game_map->grid[start_y][current_x] = CORRIDOR;  // Corridor
                     }
                     current_x += (current_x < end_x) ? 1 : -1;
                 }
@@ -360,7 +395,7 @@ void create_corridors(struct Map* game_map, Room* rooms, int room_count) {
                 int current_y = start_y;
                 while (current_y != end_y) {
                     if (game_map->grid[current_y][end_x] == ' ') {
-                        game_map->grid[current_y][end_x] = '=';  // Corridor
+                        game_map->grid[current_y][end_x] = CORRIDOR;  // Corridor
                     }
                     current_y += (current_y < end_y) ? 1 : -1;
                 }
@@ -369,7 +404,7 @@ void create_corridors(struct Map* game_map, Room* rooms, int room_count) {
                 int current_y = start_y;
                 while (current_y != end_y) {
                     if (game_map->grid[current_y][start_x] == ' ') {
-                        game_map->grid[current_y][start_x] = '=';  // Corridor
+                        game_map->grid[current_y][start_x] = CORRIDOR;  // Corridor
                     }
                     current_y += (current_y < end_y) ? 1 : -1;
                 }
@@ -414,7 +449,6 @@ struct Map generate_map(void) {
     map.room_count = 0;
     int num_rooms = MIN_ROOMS + rand() % (MAX_ROOMS - MIN_ROOMS + 1);
 
-    // Generate rooms
     for (int i = 0; i < num_rooms; i++) {
         struct Room room;
         int attempts = 0;
@@ -440,11 +474,14 @@ struct Map generate_map(void) {
         }
     }
 
-    // Ensure that the stairs are placed in a valid room (make sure it is accessible)
-    place_stairs(&map); // Assuming `place_stairs` ensures the stairs are placed somewhere valid
+    // Generate doors for all rooms
+    generate_doors_for_rooms(&map);
 
-    // Call the create_corridors function to connect all rooms with corridors
+    // Connect rooms with corridors
     create_corridors(&map, map.rooms, map.room_count);
+
+    // Ensure that the stairs are placed in a valid room
+    place_stairs(&map);
 
     // Set initial player position in the first room
     if (map.room_count > 0) {
@@ -454,6 +491,7 @@ struct Map generate_map(void) {
 
     return map;
 }
+
 
 
 
