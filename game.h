@@ -110,6 +110,7 @@ void save_current_game(struct UserManager* manager, struct Map* game_map,
 bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game);
 void list_saved_games(struct UserManager* manager);
 void generate_doors_for_rooms(struct Map* map);
+void connect_rooms_with_corridors(struct Map* map);
 
 
 // Movement and visibility
@@ -119,9 +120,7 @@ bool is_valid_move(struct Map* map, struct Point* new_pos);
 void sight_range(struct Map* game_map, struct Point* character_location);
 
 // Room connectivity
-void create_corridors(struct Map* game_map, Room* rooms, int room_count);
 bool canSeeRoomThroughWindow(struct Map* game_map, struct Room* room1, struct Room* room2);
-void create_door(struct Map* game_map, struct Room* room1, struct Room* room2);
 
 // Helper functions
 int manhattanDistance(int x1, int y1, int x2, int y2);

@@ -347,23 +347,28 @@ void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct
     refresh();
 }
 
-void create_corridors(struct Map* game_map, Room* rooms, int room_count) {
+void connect_rooms_with_corridors(struct Map* map) {
     bool connected[MAX_ROOMS] = { false };
-    connected[0] = true;  // The first room is connected
+    connected[0] = true; // Mark the first room as connected
 
-    for (int count = 1; count < room_count; count++) {
+    for (int count = 1; count < map->room_count; count++) {
         int best_src = -1;
         int best_dst = -1;
         int min_distance = INT_MAX;
 
-        // Find the closest connection between a connected and unconnected room
-        for (int i = 0; i < room_count; i++) {
+        // Find the closest pair of rooms: one connected, one unconnected
+        for (int i = 0; i < map->room_count; i++) {
             if (!connected[i]) continue;
 
-            for (int j = 0; j < room_count; j++) {
+            for (int j = 0; j < map->room_count; j++) {
                 if (connected[j]) continue;
 
-                int distance = abs(rooms[i].x - rooms[j].x) + abs(rooms[i].y - rooms[j].y);
+                int room1_center_x = (map->rooms[i].left_wall + map->rooms[i].right_wall) / 2;
+                int room1_center_y = (map->rooms[i].top_wall + map->rooms[i].bottom_wall) / 2;
+                int room2_center_x = (map->rooms[j].left_wall + map->rooms[j].right_wall) / 2;
+                int room2_center_y = (map->rooms[j].top_wall + map->rooms[j].bottom_wall) / 2;
+
+                int distance = abs(room1_center_x - room2_center_x) + abs(room1_center_y - room2_center_y);
                 if (distance < min_distance) {
                     min_distance = distance;
                     best_src = i;
@@ -375,27 +380,27 @@ void create_corridors(struct Map* game_map, Room* rooms, int room_count) {
         if (best_src != -1 && best_dst != -1) {
             connected[best_dst] = true;
 
-            // Draw corridor between rooms
-            int start_x = rooms[best_src].x + rooms[best_src].width / 2;
-            int start_y = rooms[best_src].y + rooms[best_src].height / 2;
-            int end_x = rooms[best_dst].x + rooms[best_dst].width / 2;
-            int end_y = rooms[best_dst].y + rooms[best_dst].height / 2;
+            // Connect the two rooms with a corridor
+            int start_x = (map->rooms[best_src].left_wall + map->rooms[best_src].right_wall) / 2;
+            int start_y = (map->rooms[best_src].top_wall + map->rooms[best_src].bottom_wall) / 2;
+            int end_x = (map->rooms[best_dst].left_wall + map->rooms[best_dst].right_wall) / 2;
+            int end_y = (map->rooms[best_dst].top_wall + map->rooms[best_dst].bottom_wall) / 2;
 
-            // Draw L-shaped corridor
+            // Create an L-shaped corridor
             if (rand() % 2 == 0) {
                 // Horizontal first, then vertical
                 int current_x = start_x;
                 while (current_x != end_x) {
-                    if (game_map->grid[start_y][current_x] == ' ') {
-                        game_map->grid[start_y][current_x] = CORRIDOR;  // Corridor
+                    if (map->grid[start_y][current_x] == FOG) {
+                        map->grid[start_y][current_x] = '#';
                     }
                     current_x += (current_x < end_x) ? 1 : -1;
                 }
 
                 int current_y = start_y;
                 while (current_y != end_y) {
-                    if (game_map->grid[current_y][end_x] == ' ') {
-                        game_map->grid[current_y][end_x] = CORRIDOR;  // Corridor
+                    if (map->grid[current_y][end_x] == FOG) {
+                        map->grid[current_y][end_x] = '#';
                     }
                     current_y += (current_y < end_y) ? 1 : -1;
                 }
@@ -403,16 +408,16 @@ void create_corridors(struct Map* game_map, Room* rooms, int room_count) {
                 // Vertical first, then horizontal
                 int current_y = start_y;
                 while (current_y != end_y) {
-                    if (game_map->grid[current_y][start_x] == ' ') {
-                        game_map->grid[current_y][start_x] = CORRIDOR;  // Corridor
+                    if (map->grid[current_y][start_x] == FOG) {
+                        map->grid[current_y][start_x] = '#';
                     }
                     current_y += (current_y < end_y) ? 1 : -1;
                 }
 
                 int current_x = start_x;
                 while (current_x != end_x) {
-                    if (game_map->grid[end_y][current_x] == ' ') {
-                        game_map->grid[end_y][current_x] = '=';  // Corridor
+                    if (map->grid[end_y][current_x] == FOG) {
+                        map->grid[end_y][current_x] = '#';
                     }
                     current_x += (current_x < end_x) ? 1 : -1;
                 }
@@ -420,8 +425,6 @@ void create_corridors(struct Map* game_map, Room* rooms, int room_count) {
         }
     }
 }
-
-
 
 void init_map(struct Map* map) {
     // Initialize empty map
@@ -474,16 +477,13 @@ struct Map generate_map(void) {
         }
     }
 
-    // Generate doors for all rooms
     generate_doors_for_rooms(&map);
+    connect_rooms_with_corridors(&map);
 
-    // Connect rooms with corridors
-    create_corridors(&map, map.rooms, map.room_count);
-
-    // Ensure that the stairs are placed in a valid room
+    // Place stairs
     place_stairs(&map);
 
-    // Set initial player position in the first room
+    // Set initial player position
     if (map.room_count > 0) {
         map.initial_position.x = map.rooms[0].left_wall + map.rooms[0].width / 2;
         map.initial_position.y = map.rooms[0].top_wall + map.rooms[0].height / 2;
