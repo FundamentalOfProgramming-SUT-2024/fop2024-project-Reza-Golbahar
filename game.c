@@ -515,16 +515,18 @@ void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct
             } else if (is_in_visited_room) {
                 mvaddch(y, x, game_map->grid[y][x]); // Display the entire room as it was
             } else if (game_map->discovered[y][x]) {
-                mvaddch(y, x, ':'); // Dimmed symbol for discovered tiles
+                // Display previously visited corridors and other tiles
+                if (game_map->grid[y][x] == CORRIDOR) {
+                    mvaddch(y, x, CORRIDOR); // Display visited corridors as #
+                } else {
+                    mvaddch(y, x, game_map->grid[y][x]); // Display other discovered tiles as they are
+                }
             } else {
                 mvaddch(y, x, ' '); // Unexplored tiles
             }
         }
     }
 }
-
-
-
 
 void connect_rooms_with_corridors(struct Map* map) {
     bool connected[MAX_ROOMS] = { false };
@@ -976,11 +978,10 @@ void update_visibility(struct Map* game_map, struct Point* player_pos, bool visi
             }
         }
     }
+
+    // Mark the player's current position as discovered
+    game_map->discovered[player_pos->y][player_pos->x] = true;
 }
-
-
-
-
 
 
 void place_stairs(struct Map* map) {
