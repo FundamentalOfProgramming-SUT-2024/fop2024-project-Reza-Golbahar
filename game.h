@@ -50,6 +50,13 @@ struct Point {
     int y;
 };
 
+typedef struct Trap {
+    struct Point location; // Position of the trap
+    bool triggered;        // Whether the trap has been triggered
+    bool visible;          // Whether the trap is currently visible
+} Trap;
+
+
 typedef struct Room {
     int x, y;
     int left_wall;
@@ -70,10 +77,14 @@ struct Map {
     bool discovered[MAP_HEIGHT][MAP_WIDTH];
     struct Room rooms[MAX_ROOMS];
     int room_count;
-    bool trap_triggered[MAP_HEIGHT][MAP_WIDTH]; // Add this line
+
+    Trap traps[100]; // Array of traps
+    int trap_count;  // Number of traps
+
     struct Point stairs_location;
     struct Point initial_position;
 };
+
 
 struct GameMessage {
     char text[100];

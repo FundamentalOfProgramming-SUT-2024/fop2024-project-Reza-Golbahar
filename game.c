@@ -255,7 +255,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
 }
 
 void add_traps(struct Map* game_map) {
-    const int TRAP_COUNT = 10;  // Adjust the number of traps
+    const int TRAP_COUNT = 10; // Number of traps to add
     int traps_placed = 0;
 
     while (traps_placed < TRAP_COUNT) {
@@ -264,11 +264,19 @@ void add_traps(struct Map* game_map) {
 
         // Place traps only on floor tiles
         if (game_map->grid[y][x] == FLOOR) {
-            game_map->grid[y][x] = FOG; // Hidden trap
+            game_map->grid[y][x] = '.'; // Initially display as '.'
+
+            // Add the trap to the array
+            game_map->traps[traps_placed].location = (struct Point){x, y};
+            game_map->traps[traps_placed].triggered = false;
+            game_map->traps[traps_placed].visible = false;
+
             traps_placed++;
+            game_map->trap_count = traps_placed;
         }
     }
 }
+
 
 
 void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count, int* score, int* hunger_rate) {
@@ -515,10 +523,24 @@ void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct
             } else if (is_in_visited_room) {
                 mvaddch(y, x, game_map->grid[y][x]); // Display the entire room as it was
             } else if (game_map->discovered[y][x]) {
-                if (game_map->grid[y][x] == CORRIDOR) {
-                    mvaddch(y, x, CORRIDOR); // Display visited corridors as #
-                } else {
-                    mvaddch(y, x, game_map->grid[y][x]); // Display other discovered tiles as they are
+                bool is_trap = false;
+
+                // Check for traps
+                for (int i = 0; i < game_map->trap_count; i++) {
+                    Trap* trap = &game_map->traps[i];
+                    if (trap->location.x == x && trap->location.y == y) {
+                        if (trap->triggered) {
+                            mvaddch(y, x, TRAP_SYMBOL); // Display triggered traps
+                        } else {
+                            mvaddch(y, x, '.'); // Display untriggered traps
+                        }
+                        is_trap = true;
+                        break;
+                    }
+                }
+
+                if (!is_trap) {
+                    mvaddch(y, x, game_map->grid[y][x]); // Display other discovered tiles
                 }
             } else {
                 mvaddch(y, x, ' '); // Unexplored tiles
@@ -526,6 +548,7 @@ void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct
         }
     }
 }
+
 
 
 void connect_rooms_with_corridors(struct Map* map) {
@@ -673,22 +696,36 @@ void move_character(struct Point* character_location, int key, struct Map* game_
         default: return;
     }
 
-    // Check if new position is valid
+    // Check if the new position is valid
     if (new_location.x >= 0 && new_location.x < MAP_WIDTH &&
         new_location.y >= 0 && new_location.y < MAP_HEIGHT) {
-        
+
         char target_tile = game_map->grid[new_location.y][new_location.x];
-        
-        // Allow movement through floors, corridors, and doors
-        if (target_tile != FOG && 
-            target_tile != WINDOW && 
+
+        // Check if the player steps on a trap
+        for (int i = 0; i < game_map->trap_count; i++) {
+            Trap* trap = &game_map->traps[i];
+            if (trap->location.x == new_location.x && trap->location.y == new_location.y) {
+                if (!trap->triggered) {
+                    trap->triggered = true; // Mark trap as triggered
+                    mvprintw(MAP_HEIGHT, 0, "You triggered a trap!");
+                    refresh();
+                }
+                break;
+            }
+        }
+
+        // Allow movement
+        if (target_tile != FOG &&
             target_tile != WALL_HORIZONTAL &&
             target_tile != WALL_VERTICAL &&
+            target_tile != WINDOW &&
             target_tile != PILLAR) {
             *character_location = new_location;
         }
     }
 }
+
 
 
 
@@ -699,11 +736,12 @@ void init_map(struct Map* map) {
             map->grid[y][x] = FOG;
             map->visibility[y][x] = false;
             map->discovered[y][x] = false;
-            map->trap_triggered[y][x] = false; // Initialize to false
         }
     }
     map->room_count = 0;
+    map->trap_count = 0; // Initialize trap count
 }
+
 
 
 bool rooms_overlap(const struct Room* r1, const struct Room* r2) {
@@ -958,7 +996,7 @@ void update_visibility(struct Map* game_map, struct Point* player_pos, bool visi
             }
         }
     } else {
-        // Player is in a corridor: reveal up to 5 tiles ahead in all directions
+        // Player is in a corridor: reveal up to 5 tiles ahead
         for (int dy = -CORRIDOR_SIGHT; dy <= CORRIDOR_SIGHT; dy++) {
             for (int dx = -CORRIDOR_SIGHT; dx <= CORRIDOR_SIGHT; dx++) {
                 int tx = player_pos->x + dx;
@@ -967,20 +1005,24 @@ void update_visibility(struct Map* game_map, struct Point* player_pos, bool visi
                 if (tx >= 0 && tx < MAP_WIDTH && ty >= 0 && ty < MAP_HEIGHT) {
                     int distance = abs(dx) + abs(dy);
 
-                    if (distance <= CORRIDOR_SIGHT && (game_map->grid[ty][tx] == CORRIDOR || game_map->grid[ty][tx] == DOOR)) {
+                    if (distance <= CORRIDOR_SIGHT && (game_map->grid[ty][tx] == FLOOR || game_map->grid[ty][tx] == CORRIDOR)) {
                         visible[ty][tx] = true;
                         game_map->discovered[ty][tx] = true; // Mark as discovered
-                    } else if (game_map->grid[ty][tx] == WALL_VERTICAL || game_map->grid[ty][tx] == WALL_HORIZONTAL) {
-                        break; // Stop visibility when hitting a wall
                     }
                 }
             }
         }
     }
 
-    // Mark the player's current position as discovered
-    game_map->discovered[player_pos->y][player_pos->x] = true;
+    // Update trap visibility
+    for (int i = 0; i < game_map->trap_count; i++) {
+        Trap* trap = &game_map->traps[i];
+        if (visible[trap->location.y][trap->location.x]) {
+            trap->visible = true;
+        }
+    }
 }
+
 
 
 
