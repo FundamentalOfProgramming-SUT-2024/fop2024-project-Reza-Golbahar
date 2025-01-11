@@ -497,30 +497,33 @@ void showCorridorVisibility(struct Map* game_map, int x, int y) {
 void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct Point character_location) {
     for (int y = 0; y < MAP_HEIGHT; y++) {
         for (int x = 0; x < MAP_WIDTH; x++) {
-            if (character_location.x == x && character_location.y == y) {
-                // Display player location
-                mvaddch(y, x, '@');
-            } else if (visible[y][x]) {
-                // Visible area
-                if (game_map->grid[y][x] == TRAP_SYMBOL) {
-                    if (game_map->trap_triggered[y][x]) {
-                        // Show triggered traps as '^'
-                        mvaddch(y, x, '^');
-                    } else {
-                        // Show untriggered traps as '.'
-                        mvaddch(y, x, '.');
-                    }
-                } else {
-                    // Display actual grid content
-                    mvaddch(y, x, game_map->grid[y][x]);
+            bool is_in_visited_room = false;
+
+            // Check if the tile belongs to a visited room
+            for (int i = 0; i < game_map->room_count; i++) {
+                struct Room* room = &game_map->rooms[i];
+                if (room->visited && isPointInRoom(&(struct Point){x, y}, room)) {
+                    is_in_visited_room = true;
+                    break;
                 }
+            }
+
+            if (character_location.x == x && character_location.y == y) {
+                mvaddch(y, x, '@'); // Player's location
+            } else if (visible[y][x]) {
+                mvaddch(y, x, game_map->grid[y][x]); // Display visible tiles
+            } else if (is_in_visited_room) {
+                mvaddch(y, x, game_map->grid[y][x]); // Display the entire room as it was
+            } else if (game_map->discovered[y][x]) {
+                mvaddch(y, x, ':'); // Dimmed symbol for discovered tiles
             } else {
-                // Unexplored area
-                mvaddch(y, x, ' ');
+                mvaddch(y, x, ' '); // Unexplored tiles
             }
         }
     }
 }
+
+
 
 
 void connect_rooms_with_corridors(struct Map* map) {
@@ -788,9 +791,10 @@ void message(const char* text) {
 }
 
 bool isPointInRoom(struct Point* point, struct Room* room) {
-    return (point->x > room->left_wall && point->x < room->right_wall &&
-            point->y > room->bottom_wall && point->y < room->top_wall);
+    return (point->x >= room->left_wall && point->x <= room->right_wall &&
+            point->y >= room->top_wall && point->y <= room->bottom_wall);
 }
+
 
 void showRoom(struct Map* game_map, struct Room* room, char visible[MAP_HEIGHT][MAP_WIDTH]) {
     for (int y = room->bottom_wall; y <= room->top_wall; y++) {
@@ -922,7 +926,7 @@ void place_room(struct Map* map, struct Room* room) {
 }
 
 void update_visibility(struct Map* game_map, struct Point* player_pos, bool visible[MAP_HEIGHT][MAP_WIDTH]) {
-    int view_range = 5; // Player's sight range
+    const int CORRIDOR_SIGHT = 5; // Sight range in corridors
 
     // Reset visibility
     for (int y = 0; y < MAP_HEIGHT; y++) {
@@ -931,25 +935,51 @@ void update_visibility(struct Map* game_map, struct Point* player_pos, bool visi
         }
     }
 
-    // Mark the current tile as visible and discovered
-    visible[player_pos->y][player_pos->x] = true;
-    game_map->discovered[player_pos->y][player_pos->x] = true;
+    // Check if the player is in a room
+    struct Room* current_room = NULL;
+    for (int i = 0; i < game_map->room_count; i++) {
+        if (isPointInRoom(player_pos, &game_map->rooms[i])) {
+            current_room = &game_map->rooms[i];
+            break;
+        }
+    }
 
-    // Update visibility within the view range
-    for (int dy = -view_range; dy <= view_range; dy++) {
-        for (int dx = -view_range; dx <= view_range; dx++) {
+    if (current_room) {
+        // Mark the room as visited
+        current_room->visited = true;
+
+        // Reveal the entire room
+        for (int y = current_room->top_wall; y <= current_room->bottom_wall; y++) {
+            for (int x = current_room->left_wall; x <= current_room->right_wall; x++) {
+                visible[y][x] = true;
+                game_map->discovered[y][x] = true; // Mark as discovered
+            }
+        }
+    }
+
+    // Reveal corridors with limited sight range
+    for (int dy = -CORRIDOR_SIGHT; dy <= CORRIDOR_SIGHT; dy++) {
+        for (int dx = -CORRIDOR_SIGHT; dx <= CORRIDOR_SIGHT; dx++) {
             int tx = player_pos->x + dx;
             int ty = player_pos->y + dy;
 
             if (tx >= 0 && tx < MAP_WIDTH && ty >= 0 && ty < MAP_HEIGHT) {
-                if (game_map->grid[ty][tx] != FOG) {
-                    visible[ty][tx] = true;
-                    game_map->discovered[ty][tx] = true; // Mark as discovered
+                if (game_map->grid[ty][tx] == FLOOR || 
+                    game_map->grid[ty][tx] == CORRIDOR || 
+                    game_map->grid[ty][tx] == DOOR) {
+                    int distance = abs(dx) + abs(dy);
+                    if (distance <= CORRIDOR_SIGHT) {
+                        visible[ty][tx] = true;
+                        game_map->discovered[ty][tx] = true; // Mark as discovered
+                    }
                 }
             }
         }
     }
 }
+
+
+
 
 
 
