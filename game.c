@@ -515,7 +515,6 @@ void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct
             } else if (is_in_visited_room) {
                 mvaddch(y, x, game_map->grid[y][x]); // Display the entire room as it was
             } else if (game_map->discovered[y][x]) {
-                // Display previously visited corridors and other tiles
                 if (game_map->grid[y][x] == CORRIDOR) {
                     mvaddch(y, x, CORRIDOR); // Display visited corridors as #
                 } else {
@@ -527,6 +526,7 @@ void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct
         }
     }
 }
+
 
 void connect_rooms_with_corridors(struct Map* map) {
     bool connected[MAX_ROOMS] = { false };
@@ -957,22 +957,21 @@ void update_visibility(struct Map* game_map, struct Point* player_pos, bool visi
                 game_map->discovered[y][x] = true; // Mark as discovered
             }
         }
-    }
+    } else {
+        // Player is in a corridor: reveal up to 5 tiles ahead in all directions
+        for (int dy = -CORRIDOR_SIGHT; dy <= CORRIDOR_SIGHT; dy++) {
+            for (int dx = -CORRIDOR_SIGHT; dx <= CORRIDOR_SIGHT; dx++) {
+                int tx = player_pos->x + dx;
+                int ty = player_pos->y + dy;
 
-    // Reveal corridors with limited sight range
-    for (int dy = -CORRIDOR_SIGHT; dy <= CORRIDOR_SIGHT; dy++) {
-        for (int dx = -CORRIDOR_SIGHT; dx <= CORRIDOR_SIGHT; dx++) {
-            int tx = player_pos->x + dx;
-            int ty = player_pos->y + dy;
-
-            if (tx >= 0 && tx < MAP_WIDTH && ty >= 0 && ty < MAP_HEIGHT) {
-                if (game_map->grid[ty][tx] == FLOOR || 
-                    game_map->grid[ty][tx] == CORRIDOR || 
-                    game_map->grid[ty][tx] == DOOR) {
+                if (tx >= 0 && tx < MAP_WIDTH && ty >= 0 && ty < MAP_HEIGHT) {
                     int distance = abs(dx) + abs(dy);
-                    if (distance <= CORRIDOR_SIGHT) {
+
+                    if (distance <= CORRIDOR_SIGHT && (game_map->grid[ty][tx] == CORRIDOR || game_map->grid[ty][tx] == DOOR)) {
                         visible[ty][tx] = true;
                         game_map->discovered[ty][tx] = true; // Mark as discovered
+                    } else if (game_map->grid[ty][tx] == WALL_VERTICAL || game_map->grid[ty][tx] == WALL_HORIZONTAL) {
+                        break; // Stop visibility when hitting a wall
                     }
                 }
             }
@@ -982,6 +981,7 @@ void update_visibility(struct Map* game_map, struct Point* player_pos, bool visi
     // Mark the player's current position as discovered
     game_map->discovered[player_pos->y][player_pos->x] = true;
 }
+
 
 
 void place_stairs(struct Map* map) {
