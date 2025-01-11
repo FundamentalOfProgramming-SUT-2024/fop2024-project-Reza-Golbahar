@@ -118,6 +118,7 @@ void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count, 
 void add_traps(struct Map* game_map);
 // Room and map generation
 bool is_valid_room_placement(struct Map* map, struct Room* room);
+void create_corridor_and_place_doors(struct Map* map, struct Point start, struct Point end);
 void place_room(struct Map* map, struct Room* room);
 void place_stairs(struct Map* map);
 void place_pillars(struct Map* map, struct Room* room);

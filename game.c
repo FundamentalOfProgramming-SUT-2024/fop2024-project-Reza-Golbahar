@@ -90,27 +90,25 @@ void generate_doors_for_rooms(struct Map* map) {
         struct Room* room = &map->rooms[i];
         int door_count = 0;
 
-        // Ensure maximum number of doors per room
+        // Ensure at least one door per room
         while (door_count < MAX_DOORS) {
-            // Randomly select a wall (0: top, 1: bottom, 2: left, 3: right)
-            int wall = rand() % 4;
-
-            // Generate a random position on the selected wall
+            int wall = rand() % 4;  // Randomly select a wall
             int x = 0, y = 0;
+
             switch (wall) {
-                case 0: // Top wall
+                case 0:  // Top wall
                     x = room->left_wall + 1 + rand() % (room->width - 2);
                     y = room->top_wall;
                     break;
-                case 1: // Bottom wall
+                case 1:  // Bottom wall
                     x = room->left_wall + 1 + rand() % (room->width - 2);
                     y = room->bottom_wall;
                     break;
-                case 2: // Left wall
+                case 2:  // Left wall
                     x = room->left_wall;
                     y = room->top_wall + 1 + rand() % (room->height - 2);
                     break;
-                case 3: // Right wall
+                case 3:  // Right wall
                     x = room->right_wall;
                     y = room->top_wall + 1 + rand() % (room->height - 2);
                     break;
@@ -122,9 +120,12 @@ void generate_doors_for_rooms(struct Map* map) {
                 room->doors[room->door_count++] = (struct Point){x, y};
                 door_count++;
             }
+
+            if (door_count >= 1) break;  // Ensure at least one door
         }
     }
 }
+
 
 
 void play_game(struct UserManager* manager, struct Map* game_map, 
@@ -591,7 +592,7 @@ void connect_rooms_with_corridors(struct Map* map) {
         int best_dst = -1;
         int min_distance = INT_MAX;
 
-        // Find closest unconnected rooms
+        // Find the closest pair of connected and unconnected rooms
         for (int i = 0; i < map->room_count; i++) {
             if (!connected[i]) continue;
 
@@ -601,12 +602,13 @@ void connect_rooms_with_corridors(struct Map* map) {
                 struct Room* room1 = &map->rooms[i];
                 struct Room* room2 = &map->rooms[j];
 
+                // Calculate distance between room centers
                 int room1_center_x = (room1->left_wall + room1->right_wall) / 2;
                 int room1_center_y = (room1->top_wall + room1->bottom_wall) / 2;
                 int room2_center_x = (room2->left_wall + room2->right_wall) / 2;
                 int room2_center_y = (room2->top_wall + room2->bottom_wall) / 2;
 
-                int distance = abs(room1_center_x - room2_center_x) + 
+                int distance = abs(room1_center_x - room2_center_x) +
                                abs(room1_center_y - room2_center_y);
 
                 if (distance < min_distance) {
@@ -619,101 +621,67 @@ void connect_rooms_with_corridors(struct Map* map) {
 
         if (best_src != -1 && best_dst != -1) {
             connected[best_dst] = true;
+
             struct Room* src_room = &map->rooms[best_src];
             struct Room* dst_room = &map->rooms[best_dst];
 
-            // Start and end points for the corridor
-            int start_x = (src_room->left_wall + src_room->right_wall) / 2;
-            int start_y = (src_room->top_wall + src_room->bottom_wall) / 2;
-            int end_x = (dst_room->left_wall + dst_room->right_wall) / 2;
-            int end_y = (dst_room->top_wall + dst_room->bottom_wall) / 2;
+            // Get the center points of the source and destination rooms
+            struct Point src_center = {
+                .x = (src_room->left_wall + src_room->right_wall) / 2,
+                .y = (src_room->top_wall + src_room->bottom_wall) / 2
+            };
+            struct Point dst_center = {
+                .x = (dst_room->left_wall + dst_room->right_wall) / 2,
+                .y = (dst_room->top_wall + dst_room->bottom_wall) / 2
+            };
 
-            struct Point current = { start_x, start_y };
-
-            // Randomize horizontal or vertical movement first
-            bool horizontal_first = rand() % 2 == 0;
-
-            while (current.x != end_x || current.y != end_y) {
-                if ((horizontal_first && current.x != end_x) || current.y == end_y) {
-                    // Move horizontally
-                    int next_x = current.x + ((current.x < end_x) ? 1 : -1);
-
-                    if (map->grid[current.y][next_x] == WALL_HORIZONTAL || 
-                        map->grid[current.y][next_x] == WALL_VERTICAL) {
-                        // Place a door at the intersection with the wall
-                        map->grid[current.y][next_x] = DOOR;
-                    } else if (map->grid[current.y][next_x] == FOG) {
-                        // Place corridor
-                        map->grid[current.y][next_x] = CORRIDOR;
-                    }
-                    current.x = next_x;
-                } else {
-                    // Move vertically
-                    int next_y = current.y + ((current.y < end_y) ? 1 : -1);
-
-                    if (map->grid[next_y][current.x] == WALL_HORIZONTAL || 
-                        map->grid[next_y][current.x] == WALL_VERTICAL) {
-                        // Place a door at the intersection with the wall
-                        map->grid[next_y][current.x] = DOOR;
-                    } else if (map->grid[next_y][current.x] == FOG) {
-                        // Place corridor
-                        map->grid[next_y][current.x] = CORRIDOR;
-                    }
-                    current.y = next_y;
-                }
-
-                // Randomize next move direction
-                horizontal_first = !horizontal_first;
-            }
-
-            // Ensure doors adjacent to corridor ends, only on walls
-            if (map->grid[start_y][start_x] == WALL_HORIZONTAL || 
-                map->grid[start_y][start_x] == WALL_VERTICAL) {
-                map->grid[start_y][start_x] = DOOR;
-            }
-
-            if (map->grid[end_y][end_x] == WALL_HORIZONTAL || 
-                map->grid[end_y][end_x] == WALL_VERTICAL) {
-                map->grid[end_y][end_x] = DOOR;
-            }
-
-            // Add doors to adjacent tiles at corridor ends, only on walls
-            if (start_y > 0 && (map->grid[start_y - 1][start_x] == WALL_HORIZONTAL || 
-                                map->grid[start_y - 1][start_x] == WALL_VERTICAL)) {
-                map->grid[start_y - 1][start_x] = DOOR;
-            }
-            if (start_y < MAP_HEIGHT - 1 && (map->grid[start_y + 1][start_x] == WALL_HORIZONTAL || 
-                                             map->grid[start_y + 1][start_x] == WALL_VERTICAL)) {
-                map->grid[start_y + 1][start_x] = DOOR;
-            }
-            if (start_x > 0 && (map->grid[start_y][start_x - 1] == WALL_HORIZONTAL || 
-                                map->grid[start_y][start_x - 1] == WALL_VERTICAL)) {
-                map->grid[start_y][start_x - 1] = DOOR;
-            }
-            if (start_x < MAP_WIDTH - 1 && (map->grid[start_y][start_x + 1] == WALL_HORIZONTAL || 
-                                            map->grid[start_y][start_x + 1] == WALL_VERTICAL)) {
-                map->grid[start_y][start_x + 1] = DOOR;
-            }
-
-            if (end_y > 0 && (map->grid[end_y - 1][end_x] == WALL_HORIZONTAL || 
-                              map->grid[end_y - 1][end_x] == WALL_VERTICAL)) {
-                map->grid[end_y - 1][end_x] = DOOR;
-            }
-            if (end_y < MAP_HEIGHT - 1 && (map->grid[end_y + 1][end_x] == WALL_HORIZONTAL || 
-                                           map->grid[end_y + 1][end_x] == WALL_VERTICAL)) {
-                map->grid[end_y + 1][end_x] = DOOR;
-            }
-            if (end_x > 0 && (map->grid[end_y][end_x - 1] == WALL_HORIZONTAL || 
-                              map->grid[end_y][end_x - 1] == WALL_VERTICAL)) {
-                map->grid[end_y][end_x - 1] = DOOR;
-            }
-            if (end_x < MAP_WIDTH - 1 && (map->grid[end_y][end_x + 1] == WALL_HORIZONTAL || 
-                                          map->grid[end_y][end_x + 1] == WALL_VERTICAL)) {
-                map->grid[end_y][end_x + 1] = DOOR;
-            }
+            // Create the corridor and place doors
+            create_corridor_and_place_doors(map, src_center, dst_center);
         }
     }
 }
+
+void create_corridor_and_place_doors(struct Map* map, struct Point start, struct Point end) {
+    struct Point current = start;
+
+    // Move horizontally first, then vertically
+    while (current.x != end.x) {
+        int next_x = current.x + ((current.x < end.x) ? 1 : -1);
+
+        // Place corridor tile
+        if (map->grid[current.y][next_x] == FOG) {
+            map->grid[current.y][next_x] = CORRIDOR;
+        }
+
+        // Check if corridor hits a wall of a room
+        if (map->grid[current.y][next_x] == WALL_HORIZONTAL ||
+            map->grid[current.y][next_x] == WALL_VERTICAL) {
+            map->grid[current.y][next_x] = DOOR;  // Place a door
+        }
+
+        current.x = next_x;
+    }
+
+    while (current.y != end.y) {
+        int next_y = current.y + ((current.y < end.y) ? 1 : -1);
+
+        // Place corridor tile
+        if (map->grid[next_y][current.x] == FOG) {
+            map->grid[next_y][current.x] = CORRIDOR;
+        }
+
+        // Check if corridor hits a wall of a room
+        if (map->grid[next_y][current.x] == WALL_HORIZONTAL ||
+            map->grid[next_y][current.x] == WALL_VERTICAL) {
+            map->grid[next_y][current.x] = DOOR;  // Place a door
+        }
+
+        current.y = next_y;
+    }
+}
+
+
+
 
 // Update movement validation to handle doors
 void move_character(struct Point* character_location, int key, struct Map* game_map) {
