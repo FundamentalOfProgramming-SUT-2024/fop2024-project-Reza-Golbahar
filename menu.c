@@ -377,7 +377,7 @@ void pre_game_menu(struct UserManager* manager) {
         switch (choice) {
             case '1': {
                 // Generate the map
-                struct Map new_map = generate_map();
+                struct Map new_map = generate_map(NULL);
                 printw("Map generated: %d rooms\n", new_map.room_count);  // Debugging line
                 struct Point start_pos = new_map.initial_position;
 

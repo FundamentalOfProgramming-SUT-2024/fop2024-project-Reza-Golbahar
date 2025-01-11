@@ -109,7 +109,6 @@ struct SavedGame {
 // Game core functions
 void play_game(struct UserManager* manager, struct Map* game_map, 
                struct Point* character_location, int initial_score);
-struct Map generate_map(void);
 void init_map(struct Map* map);
 void create_corridors(Room* rooms, int room_count, char map[MAP_HEIGHT][MAP_WIDTH]);
 struct Point find_door_position(struct Map* map, struct Room* room);
@@ -158,5 +157,5 @@ void draw_messages(struct MessageQueue* queue, int start_y, int start_x);
 
 // Map display
 void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct Point character_location);
-struct Map generate_map(void);
+struct Map generate_map(struct Room* previous_room);
 #endif

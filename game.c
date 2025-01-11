@@ -40,7 +40,7 @@ void game_menu(struct UserManager* manager) {
         switch (choice) {
             case 'n': {
                 // Start new game
-                struct Map game_map = generate_map();
+                struct Map game_map = generate_map(NULL);
                 struct Point character_location = game_map.initial_position;
                 play_game(manager, &game_map, &character_location, 0);
                 break;
@@ -132,6 +132,9 @@ void play_game(struct UserManager* manager, struct Map* game_map,
     int current_level = 1;  // Start at level 1
     bool game_running = true;
     int score = initial_score;
+    struct Room previous_room = {0};  // Track the current room
+
+    struct Room current_room;  // Declare current_room to track the player's room
 
     // Initialize player attributes
     int hitpoints = 100;            // Initial hitpoints
@@ -164,15 +167,16 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         print_map(game_map, visible, *character_location);
 
         // Show game info
-        mvprintw(MAP_HEIGHT + 1, 0, "Score: %d", score);
-        mvprintw(MAP_HEIGHT + 2, 0, "Hitpoints: %d", hitpoints);
-        mvprintw(MAP_HEIGHT + 3, 0, "Hunger: %d/%d", hunger_rate, MAX_HUNGER);
+        mvprintw(MAP_HEIGHT + 1, 0, "Level: %d", current_level);
+        mvprintw(MAP_HEIGHT + 2, 0, "Score: %d", score);
+        mvprintw(MAP_HEIGHT + 3, 0, "Hitpoints: %d", hitpoints);
+        mvprintw(MAP_HEIGHT + 4, 0, "Hunger: %d/%d", hunger_rate, MAX_HUNGER);
         if (manager->current_user) {
-            mvprintw(MAP_HEIGHT + 4, 0, "Player: %s", manager->current_user->username);
+            mvprintw(MAP_HEIGHT + 5, 0, "Player: %s", manager->current_user->username);
         } else {
-            mvprintw(MAP_HEIGHT + 4, 0, "Player: Guest");
+            mvprintw(MAP_HEIGHT + 5, 0, "Player: Guest");
         }
-        mvprintw(MAP_HEIGHT + 5, 0, "Use arrow keys to move, 'q' to quit, 'e' for inventory menu");
+        mvprintw(MAP_HEIGHT + 6, 0, "Use arrow keys to move, 'q' to quit, 'e' for inventory menu");
         refresh();
 
         // Increase hunger rate over time
@@ -212,10 +216,19 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                 // Check the tile the player moves onto
                 if (game_map->grid[character_location->y][character_location->x] == STAIRS) {
                     if (current_level < 4) {
+                        // Find the current room
+                        for (int i = 0; i < game_map->room_count; i++) {
+                            struct Room* room = &game_map->rooms[i];
+                            if (isPointInRoom(character_location, room)) {
+                                current_room = game_map->rooms[i];  // Save the current room details
+                                previous_room = *room;  // Save the room's details
+                                break;
+                            }
+                        }
+
                         current_level++;
-                        *game_map = generate_map();  // Generate a new map for the next level
-                        character_location->x = game_map->initial_position.x;
-                        character_location->y = game_map->initial_position.y;
+                        *game_map = generate_map(&current_room);  // Generate a new map for the next level
+                        *character_location = game_map->initial_position;  // Maintain position
 
                         mvprintw(MAP_HEIGHT + 3, 0, "Level up! Welcome to Level %d.", current_level);
                         refresh();
@@ -769,15 +782,44 @@ bool rooms_overlap(const struct Room* r1, const struct Room* r2) {
              r2->top_wall + MIN_ROOM_DISTANCE < r1->bottom_wall);
 }
 
-struct Map generate_map(void) {
+struct Map generate_map(struct Room* previous_room) {
     struct Map map;
     init_map(&map);
 
-    // Generate rooms
-    map.room_count = 0;
-    int num_rooms = MIN_ROOMS + rand() % (MAX_ROOMS - MIN_ROOMS + 1);
+    // Check if this is the first map or a new level
+    if (previous_room != NULL) {
+        // Copy the previous room dimensions and location
+        struct Room new_room = {
+            .left_wall = previous_room->left_wall,
+            .right_wall = previous_room->right_wall,
+            .top_wall = previous_room->top_wall,
+            .bottom_wall = previous_room->bottom_wall,
+            .width = previous_room->width,
+            .height = previous_room->height,
+            .door_count = 0,
+            .has_stairs = true,
+            .visited = false
+        };
 
-    for (int i = 0; i < num_rooms; i++) {
+        // Place the preserved room in the new map
+        place_room(&map, &new_room);
+
+        // Set stairs in the same relative position
+        int stairs_x = new_room.left_wall + (previous_room->width / 2);
+        int stairs_y = new_room.top_wall + (previous_room->height / 2);
+        map.grid[stairs_y][stairs_x] = STAIRS;
+
+        // Save stairs location and initial player position
+        map.stairs_location = (struct Point){stairs_x, stairs_y};
+        map.initial_position = map.stairs_location;
+
+        // Add the preserved room to the map's room list
+        map.rooms[map.room_count++] = new_room;
+    }
+
+    // Generate additional rooms
+    int num_rooms = MIN_ROOMS + rand() % (MAX_ROOMS - MIN_ROOMS + 1);
+    for (int i = (previous_room ? 1 : 0); i < num_rooms; i++) {  // Skip first room if previous_room exists
         struct Room room;
         int attempts = 0;
         bool placed = false;
@@ -808,22 +850,20 @@ struct Map generate_map(void) {
     // Connect rooms with corridors
     connect_rooms_with_corridors(&map);
 
-    // Place stairs in a random room
-    place_stairs(&map);
-
-    // Spawn food and gold in random places inside rooms
+    // Spawn food, gold, and traps
     add_food(&map);
     add_gold(&map);
-    add_traps(&map);  // Add traps to the map
+    add_traps(&map);
 
-    // Set initial player position
-    if (map.room_count > 0) {
+    // Set initial player position for the first map
+    if (previous_room == NULL && map.room_count > 0) {
         map.initial_position.x = map.rooms[0].left_wall + map.rooms[0].width / 2;
         map.initial_position.y = map.rooms[0].top_wall + map.rooms[0].height / 2;
     }
 
     return map;
 }
+
 
 
 void add_gold(struct Map* game_map) {
