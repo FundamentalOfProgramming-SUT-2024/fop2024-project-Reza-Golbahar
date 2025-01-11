@@ -129,6 +129,7 @@ void generate_doors_for_rooms(struct Map* map) {
 
 void play_game(struct UserManager* manager, struct Map* game_map, 
                struct Point* character_location, int initial_score) {
+    int current_level = 1;  // Start at level 1
     bool game_running = true;
     int score = initial_score;
 
@@ -209,12 +210,29 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                 move_character(character_location, key, game_map);
 
                 // Check the tile the player moves onto
-                if (game_map->grid[character_location->y][character_location->x] == FOOD) {
-                if (food_count < 5) {
-                    // Collect food
-                    game_map->grid[character_location->y][character_location->x] = FLOOR;
-                    food_inventory[food_count++] = 1;
+                if (game_map->grid[character_location->y][character_location->x] == STAIRS) {
+                    if (current_level < 4) {
+                        current_level++;
+                        *game_map = generate_map();  // Generate a new map for the next level
+                        character_location->x = game_map->initial_position.x;
+                        character_location->y = game_map->initial_position.y;
+
+                        mvprintw(MAP_HEIGHT + 3, 0, "Level up! Welcome to Level %d.", current_level);
+                        refresh();
+                        getch();  // Pause for player acknowledgment
+                    } else {
+                        mvprintw(MAP_HEIGHT + 3, 0, "Congratulations! You've completed all levels.");
+                        refresh();
+                        getch();
+                        game_running = false;
+                    }
                 }
+                if (game_map->grid[character_location->y][character_location->x] == FOOD) {
+                    if (food_count < 5) {
+                        // Collect food
+                        game_map->grid[character_location->y][character_location->x] = FLOOR;
+                        food_inventory[food_count++] = 1;
+                    }
                 } else if (game_map->grid[character_location->y][character_location->x] == GOLD) {
                     // Collect gold
                     game_map->grid[character_location->y][character_location->x] = FLOOR;
@@ -228,7 +246,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                     refresh();
                     getch(); // Pause to let the player see the message
                 }
-                    break;
+                break;
 
             case 'e':
                 // Open inventory menu
@@ -1144,7 +1162,7 @@ bool create_safe_filename(char* dest, size_t dest_size, const char* username, co
 }
 
 void save_current_game(struct UserManager* manager, struct Map* game_map, 
-                      struct Point* character_location, int score) {
+                      struct Point* character_location, int score, int current_level) {
     if (!manager->current_user) {
         mvprintw(0, 0, "Cannot save game as guest user.");
         refresh();
@@ -1191,6 +1209,7 @@ void save_current_game(struct UserManager* manager, struct Map* game_map,
         .game_map = *game_map,
         .character_location = *character_location,
         .score = score,
+        .current_level = current_level,
         .save_time = time(NULL)
     };
     strncpy(save.name, save_name, sizeof(save.name) - 1);

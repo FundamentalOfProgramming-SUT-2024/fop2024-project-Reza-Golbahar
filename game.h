@@ -101,6 +101,7 @@ struct SavedGame {
     struct Map game_map;
     struct Point character_location;
     int score;
+    int current_level;  // Add this to track the level
     time_t save_time;
     char name[MAX_STRING_LEN];
 };
@@ -125,7 +126,7 @@ void place_windows(struct Map* map, struct Room* room);
 void add_food(struct Map* map);
 bool validate_stair_placement(struct Map* map);
 void save_current_game(struct UserManager* manager, struct Map* game_map, 
-                      struct Point* character_location, int score);
+                      struct Point* character_location, int score, int current_level);
 bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game);
 void list_saved_games(struct UserManager* manager);
 void connect_rooms(struct Map* map, struct Room* room1, struct Room* room2);
