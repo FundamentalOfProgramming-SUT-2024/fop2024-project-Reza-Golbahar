@@ -5,7 +5,7 @@
 #include <limits.h>
 #include <dirent.h>
 #include "game.h"
-//#include "users.h"
+#include "users.h"
 
 #define DOOR '+'
 #define MAX(a,b) ((a) > (b) ? (a) : (b))

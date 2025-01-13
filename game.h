@@ -110,10 +110,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                struct Point* character_location, int initial_score);
 void init_map(struct Map* map);
 void create_corridors(Room* rooms, int room_count, char map[MAP_HEIGHT][MAP_WIDTH]);
-struct Point find_door_position(struct Map* map, struct Room* room);
-void draw_corridor_segment(struct Map* map, int start_x, int start_y, int end_x, int end_y);
-void open_food_menu(int* food_inventory, int* food_count);
-void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count, int* score, int* hitpoints);
+void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count, int* score, int* hunger_rate);
 void add_traps(struct Map* game_map);
 // Room and map generation
 bool is_valid_room_placement(struct Map* map, struct Room* room);
@@ -128,8 +125,6 @@ void save_current_game(struct UserManager* manager, struct Map* game_map,
                       struct Point* character_location, int score, int current_level);
 bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game);
 void list_saved_games(struct UserManager* manager);
-void connect_rooms(struct Map* map, struct Room* room1, struct Room* room2);
-void create_l_shaped_corridor(struct Map* map, struct Point start, struct Point end);
 void connect_rooms_with_corridors(struct Map* map);
 void add_gold(struct Map* game_map);
 
@@ -137,7 +132,6 @@ void add_gold(struct Map* game_map);
 // Movement and visibility
 void move_character(struct Point* character_location, int key, struct Map* game_map);
 void update_visibility(struct Map* map, struct Point* player_pos, bool visible[MAP_HEIGHT][MAP_WIDTH]);
-bool is_valid_move(struct Map* map, struct Point* new_pos);
 void sight_range(struct Map* game_map, struct Point* character_location);
 
 // Room connectivity
