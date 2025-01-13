@@ -961,7 +961,7 @@ void update_visibility(struct Map* game_map, struct Point* player_pos, bool visi
                 if (tx >= 0 && tx < MAP_WIDTH && ty >= 0 && ty < MAP_HEIGHT) {
                     int distance = abs(dx) + abs(dy);
 
-                    if (distance <= CORRIDOR_SIGHT && (game_map->grid[ty][tx] == FLOOR || game_map->grid[ty][tx] == CORRIDOR)) {
+                    if (distance <= CORRIDOR_SIGHT && game_map->grid[ty][tx] == CORRIDOR) {
                         visible[ty][tx] = true;
                         game_map->discovered[ty][tx] = true; // Mark as discovered
                     }
@@ -978,6 +978,8 @@ void update_visibility(struct Map* game_map, struct Point* player_pos, bool visi
         }
     }
 }
+
+
 
 
 
