@@ -53,7 +53,6 @@ struct Point {
 typedef struct Trap {
     struct Point location; // Position of the trap
     bool triggered;        // Whether the trap has been triggered
-    bool visible;          // Whether the trap is currently visible
 } Trap;
 
 

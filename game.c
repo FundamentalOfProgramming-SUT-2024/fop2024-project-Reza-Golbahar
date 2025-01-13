@@ -66,7 +66,6 @@ void play_game(struct UserManager* manager, struct Map* game_map,
     bool game_running = true;
     int score = initial_score;
 
-
     // Initialize player attributes
     int hitpoints = 100;            // Initial hitpoints
     int hunger_rate = 0;            // Initial hunger rate
@@ -145,11 +144,15 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                 move_character(character_location, key, game_map);
 
                 // Check the tile the player moves onto
-                if (game_map->grid[character_location->y][character_location->x] == STAIRS) {
+                char tile = game_map->grid[character_location->y][character_location->x];
+
+                if (tile == STAIRS) {
+                    // Handle level up logic
                     if (current_level < 4) {
                         current_level++;
+                        struct Room* current_room = NULL;
 
-                        struct Room* current_room = NULL;  // Track the current room
+                        // Find the current room
                         for (int i = 0; i < game_map->room_count; i++) {
                             if (isPointInRoom(character_location, &game_map->rooms[i])) {
                                 current_room = &game_map->rooms[i];
@@ -157,38 +160,48 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                             }
                         }
 
+                        // Generate the next map
                         struct Map new_map = generate_map(current_room);
                         *game_map = new_map;
                         *character_location = new_map.initial_position;
 
                         mvprintw(MAP_HEIGHT + 5, 0, "Level up! Welcome to Level %d.", current_level);
                         refresh();
-                        getch();  // Pause for acknowledgment
+                        getch();
                     } else {
                         mvprintw(MAP_HEIGHT + 3, 0, "Congratulations! You've completed all levels.");
                         refresh();
                         getch();
                         game_running = false;
                     }
-                }
-                if (game_map->grid[character_location->y][character_location->x] == FOOD) {
+                } else if (tile == FOOD) {
+                    // Collect food
                     if (food_count < 5) {
-                        // Collect food
                         game_map->grid[character_location->y][character_location->x] = FLOOR;
                         food_inventory[food_count++] = 1;
                     }
-                } else if (game_map->grid[character_location->y][character_location->x] == GOLD) {
+                } else if (tile == GOLD) {
                     // Collect gold
                     game_map->grid[character_location->y][character_location->x] = FLOOR;
                     gold_count++;
                     score += 10;
-                } else if (game_map->grid[character_location->y][character_location->x] == FOG) {
-                    // Hidden trap triggered
-                    mvprintw(MAP_HEIGHT + 6, 0, "You triggered a trap! Hitpoints decreased.");
-                    game_map->grid[character_location->y][character_location->x] = TRAP_SYMBOL; // Reveal trap
-                    hitpoints -= 10; // Decrease hitpoints
-                    refresh();
-                    getch(); // Pause to let the player see the message
+                } else if (tile == FLOOR) {
+                    // Check for traps
+                    for (int i = 0; i < game_map->trap_count; i++) {
+                        Trap* trap = &game_map->traps[i];
+                        if (trap->location.x == character_location->x && 
+                            trap->location.y == character_location->y) {
+                            if (!trap->triggered) {
+                                trap->triggered = true;
+                                game_map->grid[character_location->y][character_location->x] = TRAP_SYMBOL;
+                                mvprintw(MAP_HEIGHT + 6, 0, "You triggered a trap! Hitpoints decreased.");
+                                hitpoints -= 10;
+                                refresh();
+                                getch();
+                            }
+                            break;
+                        }
+                    }
                 }
                 break;
 
@@ -202,19 +215,11 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                 break;
         }
 
-        // Check for level completion
-        if (game_map->grid[character_location->y][character_location->x] == STAIRS) {
-            // Save score for user
-            if (manager->current_user) {
-                manager->current_user->score += score;
-                save_users_to_json(manager);
-            }
-            game_running = false;
-        }
-
+        // Increment frame count
         frame_count++;
     }
 }
+
 
 struct Map generate_map(struct Room* previous_room) {
     struct Map map;
@@ -308,20 +313,25 @@ void add_traps(struct Map* game_map) {
         int x = rand() % MAP_WIDTH;
         int y = rand() % MAP_HEIGHT;
 
-        // Place traps only on floor tiles
-        if (game_map->grid[y][x] == FLOOR) {
-            game_map->grid[y][x] = '.'; // Initially display as '.'
+        // Place traps only on floor tiles within rooms
+        bool inside_room = false;
+        for (int i = 0; i < game_map->room_count; i++) {
+            if (isPointInRoom(&(struct Point){x, y}, &game_map->rooms[i])) {
+                inside_room = true;
+                break;
+            }
+        }
 
-            // Add the trap to the array
+        if (inside_room && game_map->grid[y][x] == FLOOR) {
+            game_map->grid[y][x] = FLOOR; // Initially display as a normal floor
             game_map->traps[traps_placed].location = (struct Point){x, y};
             game_map->traps[traps_placed].triggered = false;
-            game_map->traps[traps_placed].visible = false;
-
             traps_placed++;
             game_map->trap_count = traps_placed;
         }
     }
 }
+
 
 
 
@@ -720,8 +730,9 @@ void move_character(struct Point* character_location, int key, struct Map* game_
             Trap* trap = &game_map->traps[i];
             if (trap->location.x == new_location.x && trap->location.y == new_location.y) {
                 if (!trap->triggered) {
-                    trap->triggered = true; // Mark trap as triggered
-                    mvprintw(MAP_HEIGHT, 0, "You triggered a trap!");
+                    trap->triggered = true; // Mark the trap as triggered
+                    game_map->grid[new_location.y][new_location.x] = TRAP_SYMBOL; // Reveal trap
+                    mvprintw(MAP_HEIGHT + 6, 0, "You triggered a trap! Hitpoints decreased.");
                     refresh();
                 }
                 break;
@@ -738,6 +749,7 @@ void move_character(struct Point* character_location, int key, struct Map* game_
         }
     }
 }
+
 
 
 void init_map(struct Map* map) {
@@ -967,14 +979,6 @@ void update_visibility(struct Map* game_map, struct Point* player_pos, bool visi
                     }
                 }
             }
-        }
-    }
-
-    // Update trap visibility
-    for (int i = 0; i < game_map->trap_count; i++) {
-        Trap* trap = &game_map->traps[i];
-        if (visible[trap->location.y][trap->location.x]) {
-            trap->visible = true;
         }
     }
 }
