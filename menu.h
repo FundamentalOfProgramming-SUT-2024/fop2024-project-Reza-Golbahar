@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include "game.h"
 
+bool init_ncurses(void);
 void first_menu(struct UserManager* manager);
 void pre_game_menu(struct UserManager* manager);
 bool entering_menu(struct UserManager* manager, int selected_index);

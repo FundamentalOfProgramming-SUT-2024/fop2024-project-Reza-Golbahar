@@ -7,6 +7,8 @@
 #include "game.h"
 #include "users.h"
 
+bool hasPassword = false;  // The single definition
+
 #define DOOR '+'
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
@@ -17,48 +19,6 @@
 #define MAX_ROOMS 10
 #define MAP_WIDTH 80
 #define MAP_HEIGHT 24
-
-
-void generate_doors_for_rooms(struct Map* map) {
-    for (int i = 0; i < map->room_count; i++) {
-        struct Room* room = &map->rooms[i];
-        int door_count = 0;
-
-        // Ensure at least one door per room
-        while (door_count < MAX_DOORS) {
-            int wall = rand() % 4;  // Randomly select a wall
-            int x = 0, y = 0;
-
-            switch (wall) {
-                case 0:  // Top wall
-                    x = room->left_wall + 1 + rand() % (room->width - 2);
-                    y = room->top_wall;
-                    break;
-                case 1:  // Bottom wall
-                    x = room->left_wall + 1 + rand() % (room->width - 2);
-                    y = room->bottom_wall;
-                    break;
-                case 2:  // Left wall
-                    x = room->left_wall;
-                    y = room->top_wall + 1 + rand() % (room->height - 2);
-                    break;
-                case 3:  // Right wall
-                    x = room->right_wall;
-                    y = room->top_wall + 1 + rand() % (room->height - 2);
-                    break;
-            }
-
-            // Place the door if the position is valid
-            if (map->grid[y][x] == WALL_HORIZONTAL || map->grid[y][x] == WALL_VERTICAL) {
-                map->grid[y][x] = DOOR;
-                room->doors[room->door_count++] = (struct Point){x, y};
-                door_count++;
-            }
-
-            if (door_count >= 1) break;  // Ensure at least one door
-        }
-    }
-}
 
 void play_game(struct UserManager* manager, struct Map* game_map, 
                struct Point* character_location, int initial_score) {
@@ -215,6 +175,8 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                 break;
         }
 
+        update_password_display();
+
         // Increment frame count
         frame_count++;
     }
@@ -242,6 +204,12 @@ struct Map generate_map(struct Room* previous_room) {
 
         // Place the preserved room in the new map
         place_room(&map, &new_room);
+
+        if (rand() % 100 < 30) { // 30% chance each room has a generator
+            for (int i = 0; i < map.room_count; i++) {
+                place_password_generator_in_corner(&map, &map.rooms[i]);
+            }
+        }
 
         // Set stairs in the same relative position
         int stairs_x = new_room.left_wall + (previous_room->width / 2);
@@ -283,11 +251,10 @@ struct Map generate_map(struct Room* previous_room) {
         }
     }
 
-    // Generate doors for rooms
-    generate_doors_for_rooms(&map);
-
     // Connect rooms with corridors
     connect_rooms_with_corridors(&map);
+
+    place_secret_doors(&map);
 
     // Spawn food, gold, and traps
     add_food(&map);
@@ -304,6 +271,55 @@ struct Map generate_map(struct Room* previous_room) {
 
     return map;
 }
+
+void place_secret_doors(struct Map* map) {
+    for (int i = 0; i < map->room_count; i++) {
+        struct Room* room = &map->rooms[i];
+        
+        // Check if this room is a 'dead-end' (exactly 1 door).
+        if (room->door_count == 1) {
+            // Try placing one secret door on a random wall tile
+            // (similar to how you place normal doors).
+            bool placed_secret = false;
+            int attempts = 0;
+
+            while (!placed_secret && attempts < 50) {
+                attempts++;
+                int wall = rand() % 4;  // 0: top, 1: bottom, 2: left, 3: right
+                int x = 0, y = 0;
+
+                switch (wall) {
+                    case 0: // top
+                        x = room->left_wall + 1 + rand() % (room->width - 2);
+                        y = room->top_wall;
+                        break;
+                    case 1: // bottom
+                        x = room->left_wall + 1 + rand() % (room->width - 2);
+                        y = room->bottom_wall;
+                        break;
+                    case 2: // left
+                        x = room->left_wall;
+                        y = room->top_wall + 1 + rand() % (room->height - 2);
+                        break;
+                    case 3: // right
+                        x = room->right_wall;
+                        y = room->top_wall + 1 + rand() % (room->height - 2);
+                        break;
+                }
+
+                // Only place if currently a wall
+                if (map->grid[y][x] == WALL_HORIZONTAL || 
+                    map->grid[y][x] == WALL_VERTICAL) {
+
+                    // Set the tile to a hidden secret door
+                    map->grid[y][x] = SECRET_DOOR_CLOSED;
+                    placed_secret = true;
+                }
+            }
+        }
+    }
+}
+
 
 void add_traps(struct Map* game_map) {
     const int TRAP_COUNT = 10; // Number of traps to add
@@ -558,7 +574,9 @@ void showCorridorVisibility(struct Map* game_map, int x, int y) {
     }
 }
 
-void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct Point character_location) {
+void print_map(struct Map* game_map,
+               bool visible[MAP_HEIGHT][MAP_WIDTH],
+               struct Point character_location){
     for (int y = 0; y < MAP_HEIGHT; y++) {
         for (int x = 0; x < MAP_WIDTH; x++) {
             bool is_in_visited_room = false;
@@ -572,13 +590,38 @@ void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct
                 }
             }
 
+            // -- 1) If this is the player's location, print the player
             if (character_location.x == x && character_location.y == y) {
-                mvaddch(y, x, '@'); // Player's location
-            } else if (visible[y][x]) {
-                mvaddch(y, x, game_map->grid[y][x]); // Display visible tiles
-            } else if (is_in_visited_room) {
-                mvaddch(y, x, game_map->grid[y][x]); // Display the entire room as it was
-            } else if (game_map->discovered[y][x]) {
+                mvaddch(y, x, PLAYER_CHAR);
+            }
+            // -- 2) If tile is visible
+            else if (visible[y][x]) {
+                char tile = game_map->grid[y][x];
+
+                // Check if it's a password door
+                if (tile == DOOR_PASSWORD) {  // '@'
+                    if (!hasPassword) {
+                        // Door locked: print red
+                        attron(COLOR_PAIR(1));
+                        mvaddch(y, x, DOOR_PASSWORD);
+                        attroff(COLOR_PAIR(1));
+                    } else {
+                        // Door unlocked: print green
+                        attron(COLOR_PAIR(2));
+                        mvaddch(y, x, DOOR_PASSWORD);
+                        attroff(COLOR_PAIR(2));
+                    }
+                } else {
+                    // Normal drawing for all other tiles
+                    mvaddch(y, x, tile);
+                }
+            }
+            // -- 3) If tile is not currently visible but is in visited room
+            else if (is_in_visited_room) {
+                mvaddch(y, x, game_map->grid[y][x]);
+            }
+            // -- 4) If tile is discovered (seen once) but not in a visited room
+            else if (game_map->discovered[y][x]) {
                 bool is_trap = false;
 
                 // Check for traps
@@ -588,7 +631,8 @@ void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct
                         if (trap->triggered) {
                             mvaddch(y, x, TRAP_SYMBOL); // Display triggered traps
                         } else {
-                            mvaddch(y, x, '.'); // Display untriggered traps
+                            // Display untriggered traps as floor or some other char
+                            mvaddch(y, x, '.');
                         }
                         is_trap = true;
                         break;
@@ -596,45 +640,61 @@ void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct
                 }
 
                 if (!is_trap) {
-                    mvaddch(y, x, game_map->grid[y][x]); // Display other discovered tiles
+                    // Could also check if it's @ here (for old discovered doors)
+                    mvaddch(y, x, game_map->grid[y][x]);
                 }
-            } else {
-                mvaddch(y, x, ' '); // Unexplored tiles
+            }
+            // -- 5) Otherwise, unexplored
+            else {
+                mvaddch(y, x, ' ');
             }
         }
     }
 }
 
 
+void place_password_generator_in_corner(struct Map* map, struct Room* room) {
+    // Let's pick the top-left corner inside the walls:
+    // The inside corner might be (room->left_wall + 1, room->top_wall + 1)
+    int corner_x = room->left_wall + 1;
+    int corner_y = room->top_wall + 1;
+
+    // Make sure it's a FLOOR or suitable spot
+    if (map->grid[corner_y][corner_x] == FLOOR) {
+        map->grid[corner_y][corner_x] = PASSWORD_GEN; // '&'
+    }
+}
+
 
 void connect_rooms_with_corridors(struct Map* map) {
     bool connected[MAX_ROOMS] = { false };
-    connected[0] = true; // Mark the first room as connected
+    connected[0] = true;
 
+    // For each unconnected room, connect it to the nearest connected room
     for (int count = 1; count < map->room_count; count++) {
-        int best_src = -1;
-        int best_dst = -1;
+        int best_src = -1, best_dst = -1;
         int min_distance = INT_MAX;
 
-        // Find the closest pair of connected and unconnected rooms
+        // Find the closest pair of (connected) and (unconnected) rooms
         for (int i = 0; i < map->room_count; i++) {
             if (!connected[i]) continue;
+            
+            // Grab a pointer to the "source" room
+            struct Room* room1 = &map->rooms[i];  
 
             for (int j = 0; j < map->room_count; j++) {
                 if (connected[j]) continue;
-
-                struct Room* room1 = &map->rooms[i];
+                
+                // Grab a pointer to the "destination" (unconnected) room
                 struct Room* room2 = &map->rooms[j];
 
-                // Calculate distance between room centers
-                int room1_center_x = (room1->left_wall + room1->right_wall) / 2;
-                int room1_center_y = (room1->top_wall + room1->bottom_wall) / 2;
-                int room2_center_x = (room2->left_wall + room2->right_wall) / 2;
-                int room2_center_y = (room2->top_wall + room2->bottom_wall) / 2;
+                // Now you can safely do:
+                int rx1 = (room1->left_wall + room1->right_wall) / 2;
+                int ry1 = (room1->top_wall + room1->bottom_wall) / 2;
+                int rx2 = (room2->left_wall + room2->right_wall) / 2;
+                int ry2 = (room2->top_wall + room2->bottom_wall) / 2;
 
-                int distance = abs(room1_center_x - room2_center_x) +
-                               abs(room1_center_y - room2_center_y);
-
+                int distance = abs(rx1 - rx2) + abs(ry1 - ry2);
                 if (distance < min_distance) {
                     min_distance = distance;
                     best_src = i;
@@ -646,66 +706,97 @@ void connect_rooms_with_corridors(struct Map* map) {
         if (best_src != -1 && best_dst != -1) {
             connected[best_dst] = true;
 
+            // Identify the room centers
             struct Room* src_room = &map->rooms[best_src];
             struct Room* dst_room = &map->rooms[best_dst];
 
-            // Get the center points of the source and destination rooms
             struct Point src_center = {
-                .x = (src_room->left_wall + src_room->right_wall) / 2,
-                .y = (src_room->top_wall + src_room->bottom_wall) / 2
+                (src_room->left_wall + src_room->right_wall) / 2,
+                (src_room->top_wall  + src_room->bottom_wall) / 2
             };
             struct Point dst_center = {
-                .x = (dst_room->left_wall + dst_room->right_wall) / 2,
-                .y = (dst_room->top_wall + dst_room->bottom_wall) / 2
+                (dst_room->left_wall + dst_room->right_wall) / 2,
+                (dst_room->top_wall  + dst_room->bottom_wall) / 2
             };
 
-            // Create the corridor and place doors
+            // Create the corridor and place doors at the boundary
             create_corridor_and_place_doors(map, src_center, dst_center);
         }
     }
 }
 
+
 void create_corridor_and_place_doors(struct Map* map, struct Point start, struct Point end) {
+    // Start from 'start' and step horizontally until x == end.x
     struct Point current = start;
-
-    // Move horizontally first, then vertically
     while (current.x != end.x) {
-        int next_x = current.x + ((current.x < end.x) ? 1 : -1);
+        int step = (current.x < end.x) ? 1 : -1;
+        int next_x = current.x + step;
 
-        // Place corridor tile
+        // If the next cell is FOG, carve it into a corridor
         if (map->grid[current.y][next_x] == FOG) {
             map->grid[current.y][next_x] = CORRIDOR;
         }
 
-        // Check if corridor hits a wall of a room
-
+        // If we hit a wall, place a door
         if (map->grid[current.y][next_x] == WALL_HORIZONTAL ||
             map->grid[current.y][next_x] == WALL_VERTICAL ||
-            map->grid[current.y][next_x] == WINDOW) {
-            map->grid[current.y][next_x] = DOOR;  // Place a door
+            map->grid[current.y][next_x] == WINDOW)
+        {
+            map->grid[current.y][next_x] = DOOR;
+            if (rand() % 100 < 20) {
+                map->grid[current.y][current.x] = DOOR_PASSWORD; // '@'
+            }
+
+            // Find which room this (x,y) belongs to, and increment door_count
+            for (int r = 0; r < map->room_count; r++) {
+                Room* rm = &map->rooms[r];
+                // Check if next_x, current.y is on the boundary of room rm
+                if (next_x >= rm->left_wall && next_x <= rm->right_wall &&
+                    current.y >= rm->top_wall && current.y <= rm->bottom_wall) 
+                {
+                    rm->door_count++;
+                    break;  // Stop searching once we found the right room
+                }
+            }
         }
 
         current.x = next_x;
     }
 
+    // Then step vertically until y == end.y
     while (current.y != end.y) {
-        int next_y = current.y + ((current.y < end.y) ? 1 : -1);
+        int step = (current.y < end.y) ? 1 : -1;
+        int next_y = current.y + step;
 
-        // Place corridor tile
         if (map->grid[next_y][current.x] == FOG) {
             map->grid[next_y][current.x] = CORRIDOR;
         }
 
-        // Check if corridor hits a wall of a room
         if (map->grid[next_y][current.x] == WALL_HORIZONTAL ||
-            map->grid[next_y][current.x] == WALL_VERTICAL || 
-            map->grid[next_y][current.x] == WINDOW) {
-            map->grid[next_y][current.x] = DOOR;  // Place a door
+            map->grid[next_y][current.x] == WALL_VERTICAL ||
+            map->grid[next_y][current.x] == WINDOW)
+        {
+            map->grid[next_y][current.x] = DOOR;
+
+            // Find which room this (x,y) belongs to, and increment door_count
+            for (int r = 0; r < map->room_count; r++) {
+                Room* rm = &map->rooms[r];
+                // Check if current.x, next_y is on the boundary of room rm
+                if (current.x >= rm->left_wall && current.x <= rm->right_wall &&
+                    next_y >= rm->top_wall && next_y <= rm->bottom_wall) 
+                {
+                    rm->door_count++;
+                    break;  // Found the room; no need to keep checking
+                }
+            }
         }
 
         current.y = next_y;
     }
 }
+
+
 
 // Update movement validation to handle doors
 void move_character(struct Point* character_location, int key, struct Map* game_map) {
@@ -719,34 +810,95 @@ void move_character(struct Point* character_location, int key, struct Map* game_
         default: return;
     }
 
-    // Check if the new position is valid
-    if (new_location.x >= 0 && new_location.x < MAP_WIDTH &&
-        new_location.y >= 0 && new_location.y < MAP_HEIGHT) {
+    // Bounds check
+    if (new_location.x < 0 || new_location.x >= MAP_WIDTH ||
+        new_location.y < 0 || new_location.y >= MAP_HEIGHT) {
+        return; // out of map bounds, do nothing
+    }
 
-        char target_tile = game_map->grid[new_location.y][new_location.x];
+    // Pseudocode in move_character:
+    char target_tile = game_map->grid[new_location.y][new_location.x];
 
-        // Check if the player steps on a trap
+    if (target_tile == PASSWORD_GEN) { // '&'
+        hasPassword = true; // now we have the password
+        // 1) Generate a 4-digit number:
+        int num = rand() % 10000;  // 0..9999
+
+        // 2) Convert to 4-digit string with leading zeros
+        snprintf(current_code, sizeof(current_code), "%04d", num);
+
+        // 3) Mark code as visible, store generation time
+        code_visible = true;
+        code_start_time = time(NULL);
+
+        // 4) Print on screen immediately
+        mvprintw(MAP_HEIGHT + 1, 0, "New password generated: %s", current_code);
+        refresh();
+    }
+
+    if (target_tile == DOOR_PASSWORD) { // '@'
+        if (!hasPassword) {
+            mvprintw(MAP_HEIGHT + 1, 0, "This door is locked! You need a password.");
+            refresh();
+            // Don't allow movement
+            return;
+        }
+}
+
+
+
+    // 1) If it's a SECRET_DOOR_CLOSED, reveal it:
+    if (target_tile == SECRET_DOOR_CLOSED) {
+        // Reveal it
+        game_map->grid[new_location.y][new_location.x] = SECRET_DOOR_REVEALED;
+
+        // Optionally print a message
+        mvprintw(MAP_HEIGHT + 6, 0, "You found a secret door!");
+        refresh();
+
+        // Now treat it like a normal passable door
+        *character_location = new_location;
+        return;
+    }
+
+    // 2) If the tile is passable (floor, corridor, revealed door, etc.), move:
+    if (target_tile != FOG && 
+        target_tile != WALL_HORIZONTAL &&
+        target_tile != WALL_VERTICAL &&
+        target_tile != WINDOW &&
+        target_tile != PILLAR) {
+
+        *character_location = new_location;
+
+        // If you have trap logic, handle it here...
         for (int i = 0; i < game_map->trap_count; i++) {
             Trap* trap = &game_map->traps[i];
             if (trap->location.x == new_location.x && trap->location.y == new_location.y) {
                 if (!trap->triggered) {
-                    trap->triggered = true; // Mark the trap as triggered
-                    game_map->grid[new_location.y][new_location.x] = TRAP_SYMBOL; // Reveal trap
-                    mvprintw(MAP_HEIGHT + 6, 0, "You triggered a trap! Hitpoints decreased.");
+                    trap->triggered = true;
+                    game_map->grid[new_location.y][new_location.x] = TRAP_SYMBOL;
+                    mvprintw(MAP_HEIGHT + 6, 0, "You triggered a trap!");
                     refresh();
                 }
                 break;
             }
         }
+    }
+}
 
-        // Allow movement
-        if (target_tile != FOG &&
-            target_tile != WALL_HORIZONTAL &&
-            target_tile != WALL_VERTICAL &&
-            target_tile != WINDOW &&
-            target_tile != PILLAR) {
-            *character_location = new_location;
-        }
+void update_password_display() {
+    if (!code_visible) return; // No code displayed currently
+
+    time_t now = time(NULL);
+    double elapsed = difftime(now, code_start_time); // seconds since code was generated
+
+    // If more than 30s passed, hide it
+    if (elapsed >= 30.0) {
+        code_visible = false;
+
+        // Clear the line on screen (or redraw UI to remove code text)
+        mvprintw(MAP_HEIGHT + 1, 0, "                                ");
+        refresh();
     }
 }
 

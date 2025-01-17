@@ -5,33 +5,13 @@
 #include "game.h"
 #include "users.h"
 
-bool init_ncurses(void) {
-    initscr();
-    raw();
-    keypad(stdscr, TRUE);
-    noecho();
-    curs_set(0);
-    
-    if (!has_colors()) {
-        endwin();
-        printf("Your terminal does not support color\n");
-        return false;
-    }
-    
-    start_color();
-    return true;
-}
-
 int main() {
     // Initialize ncurses
-    initscr();
-    noecho();        // Don't echo keypresses
     cbreak();        // Disable line buffering
-    keypad(stdscr, TRUE);  // Enable keypad
-    curs_set(0);     // Hide cursor
     
     // Initialize random seed with current time
     srand(time(NULL));
+    init_ncurses();
     
     // Create user manager
     struct UserManager* manager = create_user_manager();

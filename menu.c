@@ -6,6 +6,29 @@
 #include "game.h"
 
 
+bool init_ncurses(void) {
+    initscr();
+    raw();
+    keypad(stdscr, TRUE);
+    noecho();
+    curs_set(0);
+    
+    if (!has_colors()) {
+        endwin();
+        printf("Your terminal does not support color\n");
+        return false;
+    }
+    
+    start_color();
+    use_default_colors();
+
+    init_pair(1, COLOR_RED,   -1); // قرمز: در قفل
+    init_pair(2, COLOR_GREEN, -1); // سبز: در باز
+    init_pair(3, COLOR_YELLOW, -1); // زرد: دکمه رمز
+
+    return true;
+}
+
 void adding_new_user(struct UserManager* manager) {
     if (manager->user_count >= MAX_USERS) {
         clear();
