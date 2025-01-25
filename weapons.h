@@ -4,6 +4,7 @@
 
 #include <wchar.h>
 
+
 // Enumerate different weapon types
 typedef enum {
     WEAPON_NONE = 0,

@@ -35,6 +35,9 @@ void play_game(struct UserManager* manager, struct Map* game_map,
     bool show_map = false;  // Flag to track map visibility
 
 
+    bool show_map = false;  // Flag to track map visibility
+
+
     // Initialize player attributes
     int hitpoints = 100;            // Initial hitpoints
     int hunger_rate = 0;            // Initial hunger rate
@@ -211,6 +214,11 @@ void play_game(struct UserManager* manager, struct Map* game_map,
     }
 }
 
+<<<<<<< HEAD
+=======
+// game.c
+
+>>>>>>> 0294fab (m vision okay)
 void print_full_map(struct Map* game_map, struct Point* character_location) {
     for (int y = 0; y < MAP_HEIGHT; y++) {
         for (int x = 0; x < MAP_WIDTH; x++) {
@@ -269,6 +277,11 @@ void print_full_map(struct Map* game_map, struct Point* character_location) {
     // Optionally, display a message indicating that the full map is being shown
     mvprintw(MAP_HEIGHT + 7, 0, "Full map displayed. Press 'm' to hide.");
 }
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> 0294fab (m vision okay)
 
 struct Map generate_map(struct Room* previous_room) {
     struct Map map;
@@ -1096,6 +1109,10 @@ void place_password_generator_in_corner(struct Map* map, struct Room* room) {
     // (This is unlikely if the room is large enough).
 }
 
+<<<<<<< HEAD
+=======
+// Update movement validation to handle doors
+>>>>>>> 0294fab (m vision okay)
 void move_character(struct Point* character_location, int key,
                     struct Map* game_map, int* hitpoints, Inventory* inventory){
     struct Point new_location = *character_location;

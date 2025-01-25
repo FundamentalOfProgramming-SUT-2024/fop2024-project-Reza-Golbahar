@@ -161,12 +161,15 @@ bool validate_stair_placement(struct Map* map);
 bool prompt_for_password_door(Room* door_room);
 void place_secret_doors(struct Map* map);
 void print_full_map(struct Map* game_map, struct Point* character_location);
+<<<<<<< HEAD
 
 // Add functions for weapon management
 void add_weapon(Inventory* inventory, WeaponType type);
 void add_weapons(struct Map* game_map);
 void display_weapons(Inventory* inventory);
 Weapon get_weapon_by_type(WeaponType type);
+=======
+>>>>>>> 0294fab (m vision okay)
 
 // Saving/Loading
 void save_current_game(struct UserManager* manager, struct Map* game_map, 
