@@ -620,7 +620,7 @@ void print_map(struct Map* game_map,
 
             // 4) Apply color if it’s a password door
             if (tile == DOOR_PASSWORD) {
-                if (!hasPassword) {
+                if (!door_unlocked) {
                     // locked => red
                     attron(COLOR_PAIR(1));
                     mvaddch(y, x, tile);
@@ -907,6 +907,14 @@ void move_character(struct Point* character_location, int key,
             // 7) Turn echo off again
             noecho();
 
+            if (entered[0] == '\0') {
+                // empty input => do not unlock
+                print_password_messages("No code entered!", 4);
+                print_password_messages("Door remains locked.", 5);
+                refresh();
+                getch();
+                return;
+            }
             // Compare with current_code
             if (strcmp(entered, current_code) == 0) {
                 // Correct code => unlock door
