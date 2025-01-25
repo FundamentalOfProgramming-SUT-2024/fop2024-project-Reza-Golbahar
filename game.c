@@ -277,6 +277,8 @@ struct Map generate_map(struct Room* previous_room) {
 
     add_ancient_key(&map);
 
+    add_secret_door(&map);
+
     place_stairs(&map);
 
     // Set initial player position for the first map
@@ -576,28 +578,26 @@ void showCorridorVisibility(struct Map* game_map, int x, int y) {
 }
 
 void print_map(struct Map* game_map,
-               bool visible[MAP_HEIGHT][MAP_WIDTH],
-               struct Point character_location){
+              bool visible[MAP_HEIGHT][MAP_WIDTH],
+              struct Point character_location) {
     for (int y = 0; y < MAP_HEIGHT; y++) {
         for (int x = 0; x < MAP_WIDTH; x++) {
 
-            // 1) Determine the tile we want to print
+            // Determine the tile to print
             char tile = game_map->grid[y][x];
 
-            // 2) Are we drawing the player here?
+            // Draw the player
             if (character_location.x == x && character_location.y == y) {
                 mvaddch(y, x, PLAYER_CHAR);
                 continue;
             }
 
-            // 3) Figure out if we should draw it as visible, discovered, or hidden
+            // Determine visibility
             bool should_draw = false;
             if (visible[y][x]) {
                 should_draw = true;
-            } 
-            else {
-                // If not visible, maybe it's in a visited room or discovered tile
-                // (Your existing logic for is_in_visited_room or discovered[y][x])
+            } else {
+                // Check if it's in a visited room or discovered
                 bool is_in_visited_room = false;
                 for (int i = 0; i < game_map->room_count; i++) {
                     if (game_map->rooms[i].visited &&
@@ -617,35 +617,43 @@ void print_map(struct Map* game_map,
                 continue;
             }
 
-            // 4) Apply color if it’s a password door
+            // Apply color and print based on tile type
             if (tile == DOOR_PASSWORD) {
                 Room* door_room = find_room_by_position(game_map, x, y);
                 if (door_room && door_room->password_unlocked) {
-                    // green
+                    // Green for unlocked door
                     attron(COLOR_PAIR(2));
                     mvaddch(y, x, '@');
                     attroff(COLOR_PAIR(2));
                 } else {
-                    // red
+                    // Red for locked door
                     attron(COLOR_PAIR(1));
                     mvaddch(y, x, '@');
                     attroff(COLOR_PAIR(1));
                 }
             }
-
             else if (tile == TRAP_SYMBOL) {
-                // Print triggered trap in red (pair #4 if you added a new one)
+                // Red for triggered traps
                 attron(COLOR_PAIR(4));
                 mvaddch(y, x, tile);
                 attroff(COLOR_PAIR(4));
             }
-
             else if (tile == ANCIENT_KEY) {
-                attron(COLOR_PAIR(8));   // golden
-                mvaddstr(y, x, "▲");                  // Use mvaddstr to print a string
+                // Golden yellow for Ancient Key
+                attron(COLOR_PAIR(8));               // Use color pair 8 for golden yellow
+                mvaddstr(y, x, "▲");                  // Print the Unicode symbol
                 attroff(COLOR_PAIR(8));
             }
-            
+            else if (tile == SECRET_DOOR_CLOSED) {
+                // Print as wall (e.g., '-')
+                mvaddch(y, x, WALL_HORIZONTAL);        // Or WALL_VERTICAL based on your wall type
+            }
+            else if (tile == SECRET_DOOR_REVEALED) {
+                // Print as '?', with distinct color
+                attron(COLOR_PAIR(9));                // Use color pair 9 for secret doors
+                mvaddch(y, x, '?');
+                attroff(COLOR_PAIR(9));
+            }
             else {
                 // Normal tile printing
                 mvaddch(y, x, tile);
@@ -653,6 +661,7 @@ void print_map(struct Map* game_map,
         }
     }
 }
+
 
 Room* find_room_by_position(struct Map* map, int x, int y) {
     for (int i = 0; i < map->room_count; i++) {
@@ -850,7 +859,27 @@ void place_password_generator_in_corner(struct Map* map, struct Room* room) {
     // (This is unlikely if the room is large enough).
 }
 
+void add_secret_door(struct Map* game_map) {
+    // Attempt to place one secret door
+    for (int attempts = 0; attempts < 100; attempts++) {  // Limit attempts to prevent infinite loops
+        int x = rand() % MAP_WIDTH;
+        int y = rand() % MAP_HEIGHT;
+        char tile = game_map->grid[y][x];
 
+        // Check if the tile is a wall where a secret door can be placed
+        if (tile == WALL_HORIZONTAL || tile == WALL_VERTICAL) {
+            // Optionally, verify surrounding tiles to ensure door placement is valid
+            // For simplicity, place the secret door directly
+            game_map->grid[y][x] = SECRET_DOOR_CLOSED;
+            return; // Secret door placed
+        }
+    }
+
+    // If unable to place after 100 attempts, optionally log or handle the failure
+    mvprintw(0, 0, "Failed to place a secret door!");
+    refresh();
+    getch();
+}
 
 // Update movement validation to handle doors
 void move_character(struct Point* character_location, int key,
@@ -962,6 +991,24 @@ void move_character(struct Point* character_location, int key,
         mvprintw(13, 80, "Ancient Key!");
         refresh();
         getch();
+    }
+
+    
+        // Handle secret doors
+    else if (target_tile == SECRET_DOOR_CLOSED) {
+        // Reveal the secret door
+        game_map->grid[new_location.y][new_location.x] = SECRET_DOOR_REVEALED;
+        mvprintw(MAP_HEIGHT + 7, 0, "You discovered a secret door!");
+        refresh();
+        getch();
+        // Move the player through the revealed secret door
+        *character_location = new_location;
+        return;
+    }
+    else if (target_tile == SECRET_DOOR_REVEALED) {
+        // Allow movement through the revealed secret door
+        *character_location = new_location;
+        return;
     }
 
 

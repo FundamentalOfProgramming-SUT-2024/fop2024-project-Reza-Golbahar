@@ -27,10 +27,12 @@
 
 
 // -- Secret doors --
-#define SECRET_DOOR_CLOSED  '?'  // Hidden door tile
-#define SECRET_DOOR_REVEALED '/' // Revealed door tile
+#define SECRET_DOOR_CLOSED 'S'    // Placeholder for secret doors in the grid
+#define SECRET_DOOR_REVEALED '?'   // Symbol to display when revealed
+
 #define DOOR_PASSWORD '@'
 #define PASSWORD_GEN  '&'
+
 // Just store 'K' for "Key" in the grid
 #define ANCIENT_KEY 'K' //it will be printed as ▲
 
@@ -155,6 +157,7 @@ void place_pillars(struct Map* map, struct Room* room);
 void place_windows(struct Map* map, struct Room* room);
 void add_food(struct Map* map);
 bool validate_stair_placement(struct Map* map);
+void add_secret_door(struct Map* game_map);
 bool prompt_for_password_door(Room* door_room);
 void place_secret_doors(struct Map* map);
 

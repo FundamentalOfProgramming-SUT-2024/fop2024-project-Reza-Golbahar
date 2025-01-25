@@ -1,11 +1,16 @@
 #include <ncurses.h>
 #include <stdlib.h>
 #include <time.h>
+#include <locale.h>
 #include "menu.h"
 #include "game.h"
 #include "users.h"
 
 int main() {
+
+    // Initialize locale for proper Unicode support
+    setlocale(LC_ALL, "");
+
     // Initialize ncurses
     cbreak();        // Disable line buffering
     

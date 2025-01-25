@@ -7,6 +7,7 @@
 
 
 bool init_ncurses(void) {
+
     initscr();
     raw();
     keypad(stdscr, TRUE);
@@ -31,9 +32,7 @@ bool init_ncurses(void) {
     init_pair(7, COLOR_RED, COLOR_BLACK);
     init_pair(5, COLOR_YELLOW, COLOR_BLACK);
     init_pair(8, COLOR_YELLOW, COLOR_BLACK);  // Approx. gold on black //for ancient key
-
-
-
+    init_pair(9, COLOR_BLUE, COLOR_BLACK);     // Secret doors as blue '?' symbol
 
     return true;
 }
