@@ -837,37 +837,54 @@ void move_character(struct Point* character_location, int key,
 
     char target_tile = game_map->grid[new_location.y][new_location.x];
 
-    // Check locked password door, secret door, walls, etc. (example code)...
+    // -----------------------------------------------------------
+    // 1) If it's a locked password door and we have NO password,
+    //    disallow movement
+    // -----------------------------------------------------------
+    if (target_tile == DOOR_PASSWORD && !hasPassword) {
+        mvprintw(MAP_HEIGHT + 6, 0, "This door is locked! You need the password.");
+        refresh();
+        return; // Do NOT move onto the tile
+    }
 
-    // Move onto the tile if passable
-    if (target_tile != WALL_HORIZONTAL && 
-        target_tile != WALL_VERTICAL &&
-        target_tile != WINDOW &&
-        target_tile != PILLAR &&
-        target_tile != FOG) 
+    // -----------------------------------------------------------
+    // 2) If it's one of these, it's impassable
+    // -----------------------------------------------------------
+    if (target_tile == WALL_HORIZONTAL ||
+        target_tile == WALL_VERTICAL   ||
+        target_tile == WINDOW          ||
+        target_tile == PILLAR          ||
+        target_tile == FOG) 
     {
-        // Update player's location
-        *character_location = new_location;
+        // Not passable
+        return;
+    }
 
-        // If it's a trap location, trigger damage
-        for (int i = 0; i < game_map->trap_count; i++) {
-            Trap* trap = &game_map->traps[i];
-            if (trap->location.x == new_location.x &&
-                trap->location.y == new_location.y)
-            {
-                if (!trap->triggered) {
-                    // Reveal the trap
-                    trap->triggered = true;
-                    game_map->grid[new_location.y][new_location.x] = TRAP_SYMBOL;
-                    *hitpoints -= 10;  // Reduce HP
-                    mvprintw(MAP_HEIGHT + 6, 0, "You triggered a trap! HP -10.");
-                    refresh();
-                }
-                break;
+    // Otherwise, it's considered passable:
+    //   (Floor, Corridor, Food, Gold, 
+    //    OR password door with hasPassword==true)
+    *character_location = new_location;
+
+    // -----------------------------------------------------------
+    // 3) Trap logic: If we just moved onto a trap location, trigger damage
+    // -----------------------------------------------------------
+    for (int i = 0; i < game_map->trap_count; i++) {
+        Trap* trap = &game_map->traps[i];
+        if (trap->location.x == new_location.x &&
+            trap->location.y == new_location.y)
+        {
+            if (!trap->triggered) {
+                trap->triggered = true;
+                game_map->grid[new_location.y][new_location.x] = TRAP_SYMBOL;
+                *hitpoints -= 10;  // Reduce HP
+                mvprintw(MAP_HEIGHT + 6, 0, "You triggered a trap! HP -10.");
+                refresh();
             }
+            break;
         }
     }
 }
+
 
 
 void update_password_display() {
