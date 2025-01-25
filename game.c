@@ -31,6 +31,9 @@ void play_game(struct UserManager* manager, struct Map* game_map,
     bool game_running = true;
     int score = initial_score;
 
+    bool show_map = false;  // Flag to track map visibility
+
+
     // Initialize player attributes
     int hitpoints = 100;            // Initial hitpoints
     int hunger_rate = 0;            // Initial hunger rate
@@ -55,11 +58,15 @@ void play_game(struct UserManager* manager, struct Map* game_map,
     while (game_running) {
         clear();
 
-        // Update visibility
-        update_visibility(game_map, character_location, visible);
-
-        // Print the game map
-        print_map(game_map, visible, *character_location);
+        if (show_map) {
+            // Display the entire map
+            print_full_map(game_map, character_location);
+        } else {
+            // Update visibility based on player's field of view
+            update_visibility(game_map, character_location, visible);
+            // Display only visible parts of the map
+            print_map(game_map, visible, *character_location);
+        }
 
         // Show game info
         mvprintw(MAP_HEIGHT + 1, 0, "Level: %d", current_level);
@@ -71,7 +78,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         } else {
             mvprintw(MAP_HEIGHT + 5, 0, "Player: Guest");
         }
-        mvprintw(MAP_HEIGHT + 6, 0, "Use arrow keys to move, 'q' to quit, 'e' for inventory menu");
+        mvprintw(MAP_HEIGHT + 6, 0, "Use arrow keys to move, 'q' to quit, 'e' for inventory menu, press 'm' for full vision");
         refresh();
 
         // Increase hunger rate over time
@@ -103,6 +110,10 @@ void play_game(struct UserManager* manager, struct Map* game_map,
 
         // Handle input
         int key = getch();
+        if (key == 'm' || key == 'M') {
+            show_map = !show_map;  // Toggle the map visibility flag
+            continue;  // Skip the rest of the loop to refresh the display
+        }
         switch (key) {
             case KEY_UP:
             case KEY_DOWN:
@@ -174,6 +185,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                 break;
 
             case 'e':
+            case 'E':
                 // Open inventory menu
                 open_inventory_menu(food_inventory, &food_count, &gold_count, &score, &hunger_rate,
                         &ancient_key_count, &broken_key_count);
@@ -190,6 +202,68 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         frame_count++;
     }
 }
+
+// game.c
+
+void print_full_map(struct Map* game_map, struct Point* character_location) {
+    for (int y = 0; y < MAP_HEIGHT; y++) {
+        for (int x = 0; x < MAP_WIDTH; x++) {
+            char tile = game_map->grid[y][x];
+
+            // Draw the player
+            if (character_location->x == x && character_location->y == y) {
+                mvaddch(y, x, PLAYER_CHAR);
+                continue;
+            }
+
+            // Apply color and print based on tile type
+            if (tile == DOOR_PASSWORD) {
+                Room* door_room = find_room_by_position(game_map, x, y);
+                if (door_room && door_room->password_unlocked) {
+                    // Green for unlocked door
+                    attron(COLOR_PAIR(2));
+                    mvaddch(y, x, '@');
+                    attroff(COLOR_PAIR(2));
+                } else {
+                    // Red for locked door
+                    attron(COLOR_PAIR(1));
+                    mvaddch(y, x, '@');
+                    attroff(COLOR_PAIR(1));
+                }
+            }
+            else if (tile == TRAP_SYMBOL) {
+                // Red for triggered traps
+                attron(COLOR_PAIR(4));
+                mvaddch(y, x, tile);
+                attroff(COLOR_PAIR(4));
+            }
+            else if (tile == ANCIENT_KEY) {
+                // Golden yellow for Ancient Key
+                attron(COLOR_PAIR(8));
+                mvaddstr(y, x, "▲");  // Unicode symbol
+                attroff(COLOR_PAIR(8));
+            }
+            else if (tile == SECRET_DOOR_CLOSED) {
+                // Print as horizontal wall
+                mvaddch(y, x, WALL_HORIZONTAL);
+            }
+            else if (tile == SECRET_DOOR_REVEALED) {
+                // Print as '?', with distinct color
+                attron(COLOR_PAIR(9));
+                mvaddch(y, x, '?');
+                attroff(COLOR_PAIR(9));
+            }
+            else {
+                // Normal tile printing with default color
+                mvaddch(y, x, tile);
+            }
+        }
+    }
+
+    // Optionally, display a message indicating that the full map is being shown
+    mvprintw(MAP_HEIGHT + 7, 0, "Full map displayed. Press 'm' to hide.");
+}
+
 
 
 struct Map generate_map(struct Room* previous_room) {
@@ -276,8 +350,6 @@ struct Map generate_map(struct Room* previous_room) {
     add_traps(&map);
 
     add_ancient_key(&map);
-
-    add_secret_door(&map);
 
     place_stairs(&map);
 
@@ -857,28 +929,6 @@ void place_password_generator_in_corner(struct Map* map, struct Room* room) {
 
     // If none of the corners were valid (all blocked), do nothing
     // (This is unlikely if the room is large enough).
-}
-
-void add_secret_door(struct Map* game_map) {
-    // Attempt to place one secret door
-    for (int attempts = 0; attempts < 100; attempts++) {  // Limit attempts to prevent infinite loops
-        int x = rand() % MAP_WIDTH;
-        int y = rand() % MAP_HEIGHT;
-        char tile = game_map->grid[y][x];
-
-        // Check if the tile is a wall where a secret door can be placed
-        if (tile == WALL_HORIZONTAL || tile == WALL_VERTICAL) {
-            // Optionally, verify surrounding tiles to ensure door placement is valid
-            // For simplicity, place the secret door directly
-            game_map->grid[y][x] = SECRET_DOOR_CLOSED;
-            return; // Secret door placed
-        }
-    }
-
-    // If unable to place after 100 attempts, optionally log or handle the failure
-    mvprintw(0, 0, "Failed to place a secret door!");
-    refresh();
-    getch();
 }
 
 // Update movement validation to handle doors

@@ -157,9 +157,9 @@ void place_pillars(struct Map* map, struct Room* room);
 void place_windows(struct Map* map, struct Room* room);
 void add_food(struct Map* map);
 bool validate_stair_placement(struct Map* map);
-void add_secret_door(struct Map* game_map);
 bool prompt_for_password_door(Room* door_room);
 void place_secret_doors(struct Map* map);
+void print_full_map(struct Map* game_map, struct Point* character_location);
 
 // Saving/Loading
 void save_current_game(struct UserManager* manager, struct Map* game_map, 
