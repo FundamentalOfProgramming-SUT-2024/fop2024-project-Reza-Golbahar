@@ -579,78 +579,64 @@ void print_map(struct Map* game_map,
                struct Point character_location){
     for (int y = 0; y < MAP_HEIGHT; y++) {
         for (int x = 0; x < MAP_WIDTH; x++) {
-            bool is_in_visited_room = false;
 
-            // Check if the tile belongs to a visited room
-            for (int i = 0; i < game_map->room_count; i++) {
-                struct Room* room = &game_map->rooms[i];
-                if (room->visited && isPointInRoom(&(struct Point){x, y}, room)) {
-                    is_in_visited_room = true;
-                    break;
-                }
-            }
+            // 1) Determine the tile we want to print
+            char tile = game_map->grid[y][x];
 
-            // -- 1) If this is the player's location, print the player
+            // 2) Are we drawing the player here?
             if (character_location.x == x && character_location.y == y) {
                 mvaddch(y, x, PLAYER_CHAR);
+                continue;
             }
-            // -- 2) If tile is visible
-            else if (visible[y][x]) {
-                char tile = game_map->grid[y][x];
 
-                // Check if it's a password door
-                if (tile == DOOR_PASSWORD) {  // '@'
-                    if (!hasPassword) {
-                        // Door locked: print red
-                        attron(COLOR_PAIR(1));
-                        mvaddch(y, x, DOOR_PASSWORD);
-                        attroff(COLOR_PAIR(1));
-                    } else {
-                        // Door unlocked: print green
-                        attron(COLOR_PAIR(2));
-                        mvaddch(y, x, DOOR_PASSWORD);
-                        attroff(COLOR_PAIR(2));
-                    }
-                } else {
-                    // Normal drawing for all other tiles
-                    mvaddch(y, x, tile);
-                }
-            }
-            // -- 3) If tile is not currently visible but is in visited room
-            else if (is_in_visited_room) {
-                mvaddch(y, x, game_map->grid[y][x]);
-            }
-            // -- 4) If tile is discovered (seen once) but not in a visited room
-            else if (game_map->discovered[y][x]) {
-                bool is_trap = false;
-
-                // Check for traps
-                for (int i = 0; i < game_map->trap_count; i++) {
-                    Trap* trap = &game_map->traps[i];
-                    if (trap->location.x == x && trap->location.y == y) {
-                        if (trap->triggered) {
-                            mvaddch(y, x, TRAP_SYMBOL); // Display triggered traps
-                        } else {
-                            // Display untriggered traps as floor or some other char
-                            mvaddch(y, x, '.');
-                        }
-                        is_trap = true;
+            // 3) Figure out if we should draw it as visible, discovered, or hidden
+            bool should_draw = false;
+            if (visible[y][x]) {
+                should_draw = true;
+            } 
+            else {
+                // If not visible, maybe it's in a visited room or discovered tile
+                // (Your existing logic for is_in_visited_room or discovered[y][x])
+                bool is_in_visited_room = false;
+                for (int i = 0; i < game_map->room_count; i++) {
+                    if (game_map->rooms[i].visited &&
+                        isPointInRoom(&(struct Point){x, y}, &game_map->rooms[i])) {
+                        is_in_visited_room = true;
                         break;
                     }
                 }
-
-                if (!is_trap) {
-                    // Could also check if it's @ here (for old discovered doors)
-                    mvaddch(y, x, game_map->grid[y][x]);
+                if (is_in_visited_room || game_map->discovered[y][x]) {
+                    should_draw = true;
                 }
             }
-            // -- 5) Otherwise, unexplored
-            else {
+
+            if (!should_draw) {
+                // Not visible and not discovered => print blank/fog
                 mvaddch(y, x, ' ');
+                continue;
+            }
+
+            // 4) Apply color if it’s a password door
+            if (tile == DOOR_PASSWORD) {
+                if (!hasPassword) {
+                    // locked => red
+                    attron(COLOR_PAIR(1));
+                    mvaddch(y, x, tile);
+                    attroff(COLOR_PAIR(1));
+                } else {
+                    // unlocked => green
+                    attron(COLOR_PAIR(2));
+                    mvaddch(y, x, tile);
+                    attroff(COLOR_PAIR(2));
+                }
+            } else {
+                // Normal tile printing
+                mvaddch(y, x, tile);
             }
         }
     }
 }
+
 
 
 void place_password_generator_in_corner(struct Map* map, struct Room* room) {
