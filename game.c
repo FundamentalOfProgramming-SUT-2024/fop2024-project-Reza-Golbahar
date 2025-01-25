@@ -198,6 +198,7 @@ struct Map generate_map(struct Room* previous_room) {
             .bottom_wall = previous_room->bottom_wall,
             .width = previous_room->width,
             .height = previous_room->height,
+            .has_password_door = false,
             .door_count = 0,
             .has_stairs = true,
             .visited = false
@@ -734,12 +735,13 @@ void create_corridor_and_place_doors(struct Map* map, struct Point start, struct
                     && current.y >= rm->top_wall && current.y <= rm->bottom_wall)
                 {
                     // If room->door_count >= 1 => not guaranteed dead end
-                    if (rm->door_count >= 1) {
+                    if (rm->door_count >= 1 && !rm->has_password_door) {
                         // 20% chance to become a password door
                         if (rand() % 100 < 20) {
                             map->grid[current.y][next_x] = DOOR_PASSWORD;
                             // Immediately place a password generator tile in that room
                             place_password_generator_in_corner(map, rm);
+                            rm->has_password_door = true;
                         }
                     }
 
@@ -879,28 +881,43 @@ void move_character(struct Point* character_location, int key,
     }
 
     else if (target_tile == DOOR_PASSWORD) {
-        // If we've already unlocked it, just treat it as a normal door:
-        if (door_unlocked) {
-            // e.g., treat it like a normal door => pass through
-            game_map->grid[new_location.y][new_location.x] = DOOR; // or remain '@'
-        } else {
+        if (!door_unlocked) {
             // Prompt for code
-            echo();
+            // 1) Print the prompt at row 2, near the right side
             print_password_messages("Enter 4-digit password: ", 2);
+
+            // 2) Decide which row you'll accept input on (the "next" line)
+            int input_line = 3;
+
+            // 3) Figure out the x column if you want it on the right side
+            int margin = 25;
+            int x = COLS - margin;
+            if (x < 0) x = 0;
+
+            // 4) Move the cursor to (input_line, x)
+            move(input_line, x);
+
+            // 5) Turn echo on so typed characters appear
+            echo();
+
+            // 6) Get up to 4 chars
             char entered[5];
-            getnstr(entered, 4);  // read up to 4 chars
+            getnstr(entered, 4);
+
+            // 7) Turn echo off again
             noecho();
 
             // Compare with current_code
             if (strcmp(entered, current_code) == 0) {
                 // Correct code => unlock door
                 door_unlocked = true;
-                print_password_messages("Door unlocked!", 3);
-                // Convert the tile so you can pass:
-                game_map->grid[new_location.y][new_location.x] = DOOR;
+                print_password_messages("Door unlocked!", 4);
+                refresh();
+                getch();
             } else {
                 // Wrong code => block movement
-                print_password_messages("Wrong code! Door remains locked.", 3);
+                print_password_messages("Wrong code!", 4);
+                print_password_messages("Door remains locked.", 5);
                 refresh();
                 getch(); // Wait for user key press
                 return;  // do not move
