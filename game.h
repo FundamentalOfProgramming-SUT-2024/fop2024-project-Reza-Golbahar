@@ -31,6 +31,9 @@
 #define SECRET_DOOR_REVEALED '/' // Revealed door tile
 #define DOOR_PASSWORD '@'
 #define PASSWORD_GEN  '&'
+// Just store 'K' for "Key" in the grid
+#define ANCIENT_KEY 'K' //it will be printed as ▲
+
 
 
 // Map constants
@@ -136,7 +139,9 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                struct Point* character_location, int initial_score);
 void init_map(struct Map* map);
 void create_corridors(Room* rooms, int room_count, char map[MAP_HEIGHT][MAP_WIDTH]);
-void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count, int* score, int* hunger_rate);
+void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count,
+                         int* score, int* hunger_rate,
+                         int* ancient_key_count, int* broken_key_count);
 void add_traps(struct Map* game_map);
 void print_password_messages(const char* message, int line_offset);
 Room* find_room_by_position(struct Map* map, int x, int y);
@@ -171,6 +176,7 @@ void move_character(struct Point* character_location, int key,
 void place_password_generator_in_corner(struct Map* map, struct Room* room);
 void update_visibility(struct Map* map, struct Point* player_pos, bool visible[MAP_HEIGHT][MAP_WIDTH]);
 void sight_range(struct Map* game_map, struct Point* character_location);
+void add_ancient_key(struct Map* game_map);
 
 // Helper functions
 int manhattanDistance(int x1, int y1, int x2, int y2);

@@ -30,6 +30,8 @@ bool init_ncurses(void) {
     init_pair(6, 200, COLOR_BLACK);
     init_pair(7, COLOR_RED, COLOR_BLACK);
     init_pair(5, COLOR_YELLOW, COLOR_BLACK);
+    init_pair(8, COLOR_YELLOW, COLOR_BLACK);  // Approx. gold on black //for ancient key
+
 
 
 

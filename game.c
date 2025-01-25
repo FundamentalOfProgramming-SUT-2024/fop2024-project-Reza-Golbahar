@@ -20,6 +20,11 @@ bool hasPassword = false;  // The single definition
 #define MAP_WIDTH 80
 #define MAP_HEIGHT 24
 
+
+//For Ancient Keys
+int ancient_key_count = 0;
+int broken_key_count = 0;
+
 void play_game(struct UserManager* manager, struct Map* game_map, 
                struct Point* character_location, int initial_score) {
     int current_level = 1;  // Start at level 1
@@ -170,7 +175,8 @@ void play_game(struct UserManager* manager, struct Map* game_map,
 
             case 'e':
                 // Open inventory menu
-                open_inventory_menu(food_inventory, &food_count, &gold_count, &score, &hunger_rate);
+                open_inventory_menu(food_inventory, &food_count, &gold_count, &score, &hunger_rate,
+                        &ancient_key_count, &broken_key_count);
                 break;
 
             case 'q':
@@ -269,6 +275,8 @@ struct Map generate_map(struct Room* previous_room) {
     add_gold(&map);
     add_traps(&map);
 
+    add_ancient_key(&map);
+
     place_stairs(&map);
 
     // Set initial player position for the first map
@@ -359,15 +367,17 @@ void add_traps(struct Map* game_map) {
 
 
 
-void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count, int* score, int* hunger_rate) {
+void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count,
+                         int* score, int* hunger_rate,
+                         int* ancient_key_count, int* broken_key_count){
     bool menu_open = true;
 
     while (menu_open) {
         clear();
         mvprintw(0, 0, "Inventory Menu");
-        mvprintw(2, 0, "Food Inventory:");
 
-        // Display food inventory
+        // 1) Show food inventory
+        mvprintw(2, 0, "Food Inventory:");
         for (int i = 0; i < 5; i++) {
             if (food_inventory[i] == 1) {
                 mvprintw(4 + i, 0, "Slot %d: Food", i + 1);
@@ -376,83 +386,66 @@ void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count, 
             }
         }
 
+        // 2) Show standard info
         mvprintw(10, 0, "Gold Collected: %d", *gold_count);
         mvprintw(11, 0, "Hunger: %d", *hunger_rate);
-        mvprintw(13, 0, "Press 'u' followed by slot number to use food, 'q' to exit menu.");
+
+        // 3) Show Ancient Key info
+        //    The working keys and broken key pieces
+        mvprintw(13, 0, "Ancient Keys (working): %d", *ancient_key_count);
+        mvprintw(14, 0, "Broken Key Pieces: %d", *broken_key_count);
+
+        // 4) Instructions
+        mvprintw(16, 0, "Press 'u' + slot number (1-5) to use food, 'c' to combine 2 broken keys, 'q' to quit.");
         refresh();
 
-        // Handle input for the inventory menu
+        // Handle input
         int key = getch();
-        if (key == 'q') {
-            menu_open = false; // Exit menu
-        } else if (key == 'u') {
-            // Get slot number
-            mvprintw(14, 0, "Enter slot number (1-5): ");
-            refresh();
-            int slot = getch() - '0'; // Convert char to integer
+        switch (key) {
+            case 'q':
+                // Exit menu
+                menu_open = false;
+                break;
 
-            if (slot >= 1 && slot <= 5 && food_inventory[slot - 1] == 1) {
-                // Use food
-                food_inventory[slot - 1] = 0;
-                (*food_count)--;
-                mvprintw(16, 0, "You used food from slot %d! Hunger decreased.", slot);
-                *hunger_rate = MAX(*hunger_rate - 20, 0); // Decrease hunger rate
-            } else {
-                mvprintw(16, 0, "Invalid slot or no food in slot!");
-            }
-            refresh();
-            getch(); // Wait for player to acknowledge
+            case 'u': {
+                // Using food from a slot
+                mvprintw(18, 0, "Enter slot number (1-5): ");
+                refresh();
+                int slot = getch() - '0'; // Convert char to integer
+
+                if (slot >= 1 && slot <= 5 && food_inventory[slot - 1] == 1) {
+                    // Use food
+                    food_inventory[slot - 1] = 0;
+                    (*food_count)--;
+                    *hunger_rate = MAX(*hunger_rate - 20, 0);
+
+                    mvprintw(20, 0, "You used food from slot %d! Hunger decreased.", slot);
+                } else {
+                    mvprintw(20, 0, "Invalid slot or no food in slot!");
+                }
+                refresh();
+                getch(); // Wait for player to acknowledge
+            } break;
+
+            case 'c': {
+                // Combine two broken key pieces into one working Ancient Key
+                if (*broken_key_count >= 2) {
+                    *broken_key_count -= 2;
+                    (*ancient_key_count)++;
+                    mvprintw(18, 0, "You combined two broken key pieces into one working Ancient Key!");
+                } else {
+                    mvprintw(18, 0, "Not enough broken key pieces to combine!");
+                }
+                refresh();
+                getch(); // Wait for player
+            } break;
+
+            default:
+                // Ignore other keys
+                break;
         }
     }
 }
-
-
-
-
-void open_food_menu(int* food_inventory, int* food_count) {
-    bool menu_open = true;
-
-    while (menu_open) {
-        clear();
-        mvprintw(0, 0, "Food Menu");
-        mvprintw(2, 0, "Your Food Inventory:");
-
-        for (int i = 0; i < 5; i++) {
-            if (food_inventory[i] == 1) {
-                mvprintw(4 + i, 0, "Slot %d: Food", i + 1);
-            } else {
-                mvprintw(4 + i, 0, "Slot %d: Empty", i + 1);
-            }
-        }
-
-        mvprintw(10, 0, "Press 'u' followed by slot number to use food, 'q' to quit menu.");
-        refresh();
-
-        // Handle input for the food menu
-        int key = getch();
-        if (key == 'q') {
-            menu_open = false; // Exit menu
-        } else if (key == 'u') {
-            // Get slot number
-            mvprintw(12, 0, "Enter slot number (1-5): ");
-            refresh();
-            int slot = getch() - '0'; // Convert char to integer
-
-            if (slot >= 1 && slot <= 5 && food_inventory[slot - 1] == 1) {
-                // Use food from the specified slot
-                food_inventory[slot - 1] = 0;
-                (*food_count)--;
-                mvprintw(14, 0, "You used food from slot %d!", slot);
-            } else {
-                mvprintw(14, 0, "Invalid slot or no food in slot!");
-            }
-            refresh();
-            getch(); // Wait for player to acknowledge
-        }
-    }
-}
-
-
 
 
 // Implementation of print_point
@@ -645,6 +638,12 @@ void print_map(struct Map* game_map,
                 attron(COLOR_PAIR(4));
                 mvaddch(y, x, tile);
                 attroff(COLOR_PAIR(4));
+            }
+
+            else if (tile == ANCIENT_KEY) {
+                attron(COLOR_PAIR(8));   // golden
+                mvaddstr(y, x, "▲");                  // Use mvaddstr to print a string
+                attroff(COLOR_PAIR(8));
             }
             
             else {
@@ -905,24 +904,64 @@ void move_character(struct Point* character_location, int key,
 
     else if (target_tile == DOOR_PASSWORD) {
         Room* door_room = find_room_by_position(game_map, new_location.x, new_location.y);
-        if (door_room && door_room->has_password_door) {
-            // Already unlocked?
-            if (door_room->password_unlocked) {
-                *character_location = new_location;
-            } else {
-                // Prompt for password with up to 3 attempts
-                bool success = prompt_for_password_door(door_room);
-                if (success) {
-                    // If correct => set unlocked
-                    door_room->password_unlocked = true;
+        if (door_room->password_unlocked) {
+            // already unlocked => just move
+            *character_location = new_location;
+        } else {
+            // if the user has at least 1 key, let them choose
+            bool has_key = (ancient_key_count > 0);
+            bool used_key = false;
 
-                    // Move onto the door tile
+            if (has_key) {
+                // Ask user if they'd like to use the Ancient Key or enter password
+                clear();
+                mvprintw(2, 2, "Door is locked! You have an Ancient Key. Use it? (y/n)");
+                refresh();
+                int c = getch();
+                if (c == 'y' || c == 'Y') {
+                    used_key = true;
+                }
+                // else they might attempt normal password input below
+            }
+
+            if (used_key) {
+                // 10% break chance
+                if ((rand() % 100) < 10) {
+                    // Key breaks => lose 1 key, gain 1 broken piece
+                    ancient_key_count--;
+                    broken_key_count++;
+                    mvprintw(4, 2, "The Ancient Key broke!");
+                } else {
+                    // Key successfully used => remove 1 key
+                    ancient_key_count--;
+                    door_room->password_unlocked = true; 
+                    mvprintw(4, 2, "Door unlocked with the Ancient Key!");
+                    // Player can pass through now
                     *character_location = new_location;
                 }
-                // else: remain locked => DO NOT update the location
+                refresh();
+                getch();
+                return; 
+            } else {
+                // Normal prompt for password (as before)...
+                bool success = prompt_for_password_door(door_room);
+                if (success) {
+                    door_room->password_unlocked = true;
+                    *character_location = new_location;
+                }
+                return;
             }
-            return;
         }
+    }
+
+    else if (target_tile == ANCIENT_KEY) {
+        // Pick up the Ancient Key
+        game_map->grid[new_location.y][new_location.x] = FLOOR; // Remove the key from the map
+        ancient_key_count++;
+        mvprintw(12, 80, "You picked up an");
+        mvprintw(13, 80, "Ancient Key!");
+        refresh();
+        getch();
     }
 
 
@@ -1036,6 +1075,18 @@ bool prompt_for_password_door(Room* door_room) {
     return false; // remain locked
 }
 
+void add_ancient_key(struct Map* game_map) {
+    // Guarantee exactly 1 Ancient Key per level
+    // Find a random floor tile and place '▲'
+    while (true) {
+        int x = rand() % MAP_WIDTH;
+        int y = rand() % MAP_HEIGHT;
+        if (game_map->grid[y][x] == FLOOR) {
+            game_map->grid[y][x] = ANCIENT_KEY; 
+            break; 
+        }
+    }
+}
 
 void print_password_messages(const char* message, int line_offset) {
     // We want to place the message near the right edge, say 25 columns from it.
