@@ -26,6 +26,11 @@ bool init_ncurses(void) {
     init_pair(2, COLOR_GREEN, -1); // سبز: در باز
     init_pair(3, COLOR_YELLOW, -1); // زرد: دکمه رمز
     init_pair(4, COLOR_RED,   -1); // For traps
+    init_color(200, 1000, 647, 0); // This is just an example if the terminal supports init_color
+    init_pair(6, 200, COLOR_BLACK);
+    init_pair(7, COLOR_RED, COLOR_BLACK);
+    init_pair(5, COLOR_YELLOW, COLOR_BLACK);
+
 
 
     return true;

@@ -150,6 +150,7 @@ void place_pillars(struct Map* map, struct Room* room);
 void place_windows(struct Map* map, struct Room* room);
 void add_food(struct Map* map);
 bool validate_stair_placement(struct Map* map);
+bool prompt_for_password_door(Room* door_room);
 void place_secret_doors(struct Map* map);
 
 // Saving/Loading

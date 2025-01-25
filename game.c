@@ -904,68 +904,23 @@ void move_character(struct Point* character_location, int key,
 
 
     else if (target_tile == DOOR_PASSWORD) {
-        // Find the door's room
         Room* door_room = find_room_by_position(game_map, new_location.x, new_location.y);
         if (door_room && door_room->has_password_door) {
-        // Already unlocked?
+            // Already unlocked?
             if (door_room->password_unlocked) {
-                // Just move
                 *character_location = new_location;
             } else {
-                // Prompt for code
-                // 1) Print the prompt at row 2, near the right side
-                print_password_messages("Enter 4-digit password: ", 2);
-
-                // 2) Decide which row you'll accept input on (the "next" line)
-                int input_line = 3;
-
-                // 3) Figure out the x column if you want it on the right side
-                int margin = 25;
-                int x = COLS - margin;
-                if (x < 0) x = 0;
-
-                // 4) Move the cursor to (input_line, x)
-                move(input_line, x);
-
-                // 5) Turn echo on so typed characters appear
-                echo();
-
-                // 6) Get up to 4 chars
-                char entered[5];
-                getnstr(entered, 4);
-
-                // 7) Turn echo off again
-                noecho();
-                
-
-                if (entered[0] == '\0') {
-                    // empty input => do not unlock
-                    print_password_messages("No code entered!", 4);
-                    print_password_messages("Door remains locked.", 5);
-                    refresh();
-                    getch();
-                    return;
-                }
-                // Compare with current_code
-                if (strcmp(entered, door_room->door_code) == 0) {
-                    // Correct code => unlock door
+                // Prompt for password with up to 3 attempts
+                bool success = prompt_for_password_door(door_room);
+                if (success) {
+                    // If correct => set unlocked
                     door_room->password_unlocked = true;
-                    print_password_messages("Door unlocked!", 4);
-                    refresh();
-                    getch();
-                } else {
-                    // Wrong code => block movement
-                    print_password_messages("Wrong code!", 4);
-                    print_password_messages("Door remains locked.", 5);
-                    refresh();
-                    getch(); // Wait for user key press
-                    return;  // do not move
-                }
-            }
 
-            // If we get here, door_unlocked is true => pass
-            *character_location = new_location;
-            // optionally do trap check, etc.
+                    // Move onto the door tile
+                    *character_location = new_location;
+                }
+                // else: remain locked => DO NOT update the location
+            }
             return;
         }
     }
@@ -1009,6 +964,79 @@ void move_character(struct Point* character_location, int key,
     }
 }
 
+bool prompt_for_password_door(Room* door_room) {
+    // door_room->door_code contains the correct 4-digit code
+    // The player has up to 3 attempts
+    // Return true if door is unlocked, false otherwise
+
+    for (int attempt = 1; attempt <= 3; attempt++) {
+        // Clear the screen so we're on a "special page"
+        clear();
+
+        // Prompt text
+        mvprintw(2, 2, "You have encountered a locked door.");
+        mvprintw(3, 2, "Attempts remaining: %d", 4 - attempt);
+
+        // If this is not the first attempt, show a color-coded warning
+        if (attempt > 1) {
+            int color_pair_id = 0;
+            if      (attempt == 2) color_pair_id = 5; // Yellow for 1st wrong attempt
+            else if (attempt == 3) color_pair_id = 6; // Orange or your chosen color
+            // If you want the 3rd attempt to be RED, switch the logic:
+            // else if (attempt == 3) color_pair_id = 7;
+
+            attron(COLOR_PAIR(color_pair_id));
+            mvprintw(5, 2, 
+                (attempt == 2) ? "Warning: 1 wrong attempt so far!" :
+                                 "Warning: 2 wrong attempts so far!");
+            attroff(COLOR_PAIR(color_pair_id));
+        }
+
+        // Ask user for the code
+        mvprintw(7, 2, "Enter 4-digit password (attempt %d of 3): ", attempt);
+        refresh();
+
+        // Read the input
+        echo();
+        char entered[5];
+        getnstr(entered, 4);
+        noecho();
+
+        // Check if user typed nothing
+        if (entered[0] == '\0') {
+            // We can let it count as a fail or skip attempts logic. 
+            // Let’s treat it as a wrong attempt:
+            continue;
+        }
+
+        // Compare with door_room->door_code
+        if (strcmp(entered, door_room->door_code) == 0) {
+            // Correct => unlock
+            clear();
+            attron(COLOR_PAIR(2)); // or some "success" color if you want
+            mvprintw(2, 2, "Door unlocked successfully!");
+            attroff(COLOR_PAIR(2));
+            refresh();
+            getch();
+            return true;  // success
+        }
+        else {
+            // Wrong => let the loop continue
+            // (If attempt < 3, the player will get another chance.)
+        }
+    }
+
+    // If we get here, the user has failed 3 attempts
+    clear();
+    attron(COLOR_PAIR(7)); // Red for final fail
+    mvprintw(2, 2, "Too many wrong attempts! The door remains locked.");
+    attroff(COLOR_PAIR(7));
+    refresh();
+    getch();
+    return false; // remain locked
+}
+
+
 void print_password_messages(const char* message, int line_offset) {
     // We want to place the message near the right edge, say 25 columns from it.
     // 'line_offset' determines which row (vertical position) we print on.
@@ -1044,10 +1072,6 @@ void update_password_display() {
         print_password_messages(msg2, MAP_HEIGHT + 6);
     }
 }
-
-
-
-
 
 void init_map(struct Map* map) {
     for (int y = 0; y < MAP_HEIGHT; y++) {
