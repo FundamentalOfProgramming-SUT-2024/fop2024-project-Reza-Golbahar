@@ -936,6 +936,7 @@ void move_character(struct Point* character_location, int key,
 
                 // 7) Turn echo off again
                 noecho();
+                
 
                 if (entered[0] == '\0') {
                     // empty input => do not unlock
@@ -946,7 +947,7 @@ void move_character(struct Point* character_location, int key,
                     return;
                 }
                 // Compare with current_code
-                if (strcmp(entered, current_code) == 0) {
+                if (strcmp(entered, door_room->door_code) == 0) {
                     // Correct code => unlock door
                     door_room->password_unlocked = true;
                     print_password_messages("Door unlocked!", 4);
