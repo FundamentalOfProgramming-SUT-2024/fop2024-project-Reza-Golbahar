@@ -727,36 +727,47 @@ void connect_rooms_with_corridors(struct Map* map) {
 
 
 void create_corridor_and_place_doors(struct Map* map, struct Point start, struct Point end) {
-    // Start from 'start' and step horizontally until x == end.x
     struct Point current = start;
+
+    // Move horizontally from 'start' to end.x
     while (current.x != end.x) {
         int step = (current.x < end.x) ? 1 : -1;
         int next_x = current.x + step;
 
-        // If the next cell is FOG, carve it into a corridor
         if (map->grid[current.y][next_x] == FOG) {
+            // Carve corridor
             map->grid[current.y][next_x] = CORRIDOR;
         }
-
-        // If we hit a wall, place a door
-        if (map->grid[current.y][next_x] == WALL_HORIZONTAL ||
-            map->grid[current.y][next_x] == WALL_VERTICAL ||
-            map->grid[current.y][next_x] == WINDOW)
+        else if (map->grid[current.y][next_x] == WALL_HORIZONTAL ||
+                 map->grid[current.y][next_x] == WALL_VERTICAL ||
+                 map->grid[current.y][next_x] == WINDOW) 
         {
+            // Place a normal door by default
             map->grid[current.y][next_x] = DOOR;
-            if (rand() % 100 < 20) {
-                map->grid[current.y][current.x] = DOOR_PASSWORD; // '@'
-            }
 
-            // Find which room this (x,y) belongs to, and increment door_count
+            // Identify which room boundary we just hit
             for (int r = 0; r < map->room_count; r++) {
                 Room* rm = &map->rooms[r];
-                // Check if next_x, current.y is on the boundary of room rm
                 if (next_x >= rm->left_wall && next_x <= rm->right_wall &&
-                    current.y >= rm->top_wall && current.y <= rm->bottom_wall) 
+                    current.y >= rm->top_wall && current.y <= rm->bottom_wall)
                 {
-                    rm->door_count++;
-                    break;  // Stop searching once we found the right room
+                    // If this room already has >=1 door, it won't be a dead end.
+                    // So we allow a chance to become a password door.
+                    // If it has 0 doors, it's potentially a dead-end => do NOT place password door.
+                    if (rm->door_count >= 1) {
+                        // e.g., 20% chance for a password door
+                        if (rand() % 100 < 20) {
+                            map->grid[current.y][next_x] = DOOR_PASSWORD;
+                        }
+                    }
+
+                    // Record the door location in this room
+                    if (rm->door_count < MAX_DOORS) {
+                        rm->doors[rm->door_count].x = next_x;
+                        rm->doors[rm->door_count].y = current.y;
+                        rm->door_count++;
+                    }
+                    break;
                 }
             }
         }
@@ -764,30 +775,42 @@ void create_corridor_and_place_doors(struct Map* map, struct Point start, struct
         current.x = next_x;
     }
 
-    // Then step vertically until y == end.y
+    // Then do the same logic vertically until current.y == end.y
     while (current.y != end.y) {
         int step = (current.y < end.y) ? 1 : -1;
         int next_y = current.y + step;
 
         if (map->grid[next_y][current.x] == FOG) {
+            // Carve corridor
             map->grid[next_y][current.x] = CORRIDOR;
         }
-
-        if (map->grid[next_y][current.x] == WALL_HORIZONTAL ||
-            map->grid[next_y][current.x] == WALL_VERTICAL ||
-            map->grid[next_y][current.x] == WINDOW)
+        else if (map->grid[next_y][current.x] == WALL_HORIZONTAL ||
+                 map->grid[next_y][current.x] == WALL_VERTICAL ||
+                 map->grid[next_y][current.x] == WINDOW)
         {
+            // Place a normal door by default
             map->grid[next_y][current.x] = DOOR;
 
-            // Find which room this (x,y) belongs to, and increment door_count
+            // Identify which room boundary we just hit
             for (int r = 0; r < map->room_count; r++) {
                 Room* rm = &map->rooms[r];
-                // Check if current.x, next_y is on the boundary of room rm
                 if (current.x >= rm->left_wall && current.x <= rm->right_wall &&
-                    next_y >= rm->top_wall && next_y <= rm->bottom_wall) 
+                    next_y >= rm->top_wall && next_y <= rm->bottom_wall)
                 {
-                    rm->door_count++;
-                    break;  // Found the room; no need to keep checking
+                    if (rm->door_count >= 1) {
+                        // e.g., 20% chance for a password door
+                        if (rand() % 100 < 20) {
+                            map->grid[next_y][current.x] = DOOR_PASSWORD;
+                        }
+                    }
+
+                    // Record the door location
+                    if (rm->door_count < MAX_DOORS) {
+                        rm->doors[rm->door_count].x = current.x;
+                        rm->doors[rm->door_count].y = next_y;
+                        rm->door_count++;
+                    }
+                    break;
                 }
             }
         }
@@ -795,6 +818,7 @@ void create_corridor_and_place_doors(struct Map* map, struct Point start, struct
         current.y = next_y;
     }
 }
+
 
 
 

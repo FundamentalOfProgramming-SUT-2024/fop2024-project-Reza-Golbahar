@@ -416,7 +416,11 @@ void pre_game_menu(struct UserManager* manager) {
                 break;
             }
             case '2':
-                // Load game functionality
+                struct SavedGame saved;
+                if (load_saved_game(manager, &saved)) {
+                    // If successfully loaded, start the game from saved state
+                    play_game(manager, &saved.game_map, &saved.character_location, saved.score);
+                }
                 break;
             case '3':
                 print_scoreboard(manager);
