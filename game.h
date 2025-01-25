@@ -122,9 +122,12 @@ struct SavedGame {
 
 
 static bool code_visible = false;        // Is there a code currently on screen?
-static time_t code_start_time;           // When was it generated?
-static char current_code[6] = "0000";    // Holds the 4-digit code
+static time_t code_start_time = 0;           // When was it generated?
+static char current_code[6] = "";    // Holds the 4-digit code
 extern bool hasPassword;  // Just a declaration, no assignment
+
+// If you only have one password door at a time, you could do:
+static bool door_unlocked = false;
 
 
 
@@ -135,6 +138,7 @@ void init_map(struct Map* map);
 void create_corridors(Room* rooms, int room_count, char map[MAP_HEIGHT][MAP_WIDTH]);
 void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count, int* score, int* hunger_rate);
 void add_traps(struct Map* game_map);
+void print_password_messages(const char* message, int line_offset);
 
 // Room and map generation
 bool is_valid_room_placement(struct Map* map, struct Room* room);

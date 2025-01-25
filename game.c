@@ -52,6 +52,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
 
         // Update visibility
         update_visibility(game_map, character_location, visible);
+        update_password_display();
 
         // Print the game map
         print_map(game_map, visible, *character_location);
@@ -854,15 +855,64 @@ void move_character(struct Point* character_location, int key,
     if (target_tile == PASSWORD_GEN) {
         if (!hasPassword) {
             hasPassword = true;
-            // Generate 4-digit code
-            int num = rand() % 10000;
+            int num = rand() % 10000; // 0..9999
             snprintf(current_code, sizeof(current_code), "%04d", num);
-            mvprintw(MAP_HEIGHT + 6, 0, "New password: %s", current_code);
+
+            code_visible = true;
+            code_start_time = time(NULL);
+
+            // Print immediate feedback
+
+            // 1) Build the formatted string
+            char msg[128];
+            snprintf(msg, sizeof(msg),
+                    "Password generated: %s (valid for 30s)",
+                    current_code);
+
+            // 2) Print it at the right side with line_offset = MAP_HEIGHT + 5 (or any row you like)
+            print_password_messages(msg, MAP_HEIGHT + 5);
+
             refresh();
         }
         // Optionally remove the tile or leave it so it can be stepped on again
         // game_map->grid[new_location.y][new_location.x] = FLOOR;
     }
+
+    else if (target_tile == DOOR_PASSWORD) {
+        // If we've already unlocked it, just treat it as a normal door:
+        if (door_unlocked) {
+            // e.g., treat it like a normal door => pass through
+            game_map->grid[new_location.y][new_location.x] = DOOR; // or remain '@'
+        } else {
+            // Prompt for code
+            echo();
+            print_password_messages("Enter 4-digit password: ", 2);
+            char entered[5];
+            getnstr(entered, 4);  // read up to 4 chars
+            noecho();
+
+            // Compare with current_code
+            if (strcmp(entered, current_code) == 0) {
+                // Correct code => unlock door
+                door_unlocked = true;
+                print_password_messages("Door unlocked!", 3);
+                // Convert the tile so you can pass:
+                game_map->grid[new_location.y][new_location.x] = DOOR;
+            } else {
+                // Wrong code => block movement
+                print_password_messages("Wrong code! Door remains locked.", 3);
+                refresh();
+                getch(); // Wait for user key press
+                return;  // do not move
+            }
+        }
+
+        // If we get here, door_unlocked is true => pass
+        *character_location = new_location;
+        // optionally do trap check, etc.
+        return;
+    }
+
 
 
     // -----------------------------------------------------------
@@ -903,23 +953,51 @@ void move_character(struct Point* character_location, int key,
     }
 }
 
+void print_password_messages(const char* message, int line_offset) {
+    // We want to place the message near the right edge, say 25 columns from it.
+    // 'line_offset' determines which row (vertical position) we print on.
+    int right_margin = 25; // or 30, etc.
+    int x = COLS - right_margin; 
 
+    // If x is less than 0 for very small terminals, clamp to 0
+    if (x < 0) x = 0;
+
+    // Print the message at row = line_offset, column = x
+    mvprintw(line_offset, x, "%s", message);
+    refresh();
+}
 
 void update_password_display() {
-    if (!code_visible) return; // No code displayed currently
+    if (!code_visible) return;  // Not currently showing a code
 
     time_t now = time(NULL);
-    double elapsed = difftime(now, code_start_time); // seconds since code was generated
+    double elapsed = difftime(now, code_start_time);
 
-    // If more than 30s passed, hide it
-    if (elapsed >= 30.0) {
+    // If > 30 seconds, hide it
+    if (elapsed > 30.0) {
         code_visible = false;
 
-        // Clear the line on screen (or redraw UI to remove code text)
-        mvprintw(MAP_HEIGHT + 1, 0, "                                ");
-        refresh();
+        // Overwrite or clear the line on the right side
+        print_password_messages("                             ", MAP_HEIGHT + 5);
+    } else {
+        // Still within 30s, ensure it’s printed
+        char msg[128];
+        char msg2[128];
+
+        snprintf(msg, sizeof(msg),
+                "Generated password: %s",
+                current_code);
+
+        // For the seconds left, do something like:
+        snprintf(msg2, sizeof(msg2),
+                "(%.0f seconds left)",
+                30.0 - elapsed);
+
+        print_password_messages(msg, MAP_HEIGHT + 5);
+        print_password_messages(msg2, MAP_HEIGHT + 6);
     }
 }
+
 
 
 
