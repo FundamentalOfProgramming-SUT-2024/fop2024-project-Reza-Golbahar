@@ -52,7 +52,6 @@ void play_game(struct UserManager* manager, struct Map* game_map,
 
         // Update visibility
         update_visibility(game_map, character_location, visible);
-        update_password_display();
 
         // Print the game map
         print_map(game_map, visible, *character_location);
@@ -93,6 +92,9 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             game_running = false;
             break;
         }
+
+        update_password_display();
+        refresh();
 
         // Handle input
         int key = getch();
@@ -199,6 +201,10 @@ struct Map generate_map(struct Room* previous_room) {
             .width = previous_room->width,
             .height = previous_room->height,
             .has_password_door = false,
+            .password_unlocked   = false,
+            .password_active     = false,
+            .password_gen_time   = 0,
+            .door_code[0]        = '\0', // empty string initially
             .door_count = 0,
             .has_stairs = true,
             .visited = false
@@ -620,16 +626,17 @@ void print_map(struct Map* game_map,
 
             // 4) Apply color if it’s a password door
             if (tile == DOOR_PASSWORD) {
-                if (!door_unlocked) {
-                    // locked => red
-                    attron(COLOR_PAIR(1));
-                    mvaddch(y, x, tile);
-                    attroff(COLOR_PAIR(1));
-                } else {
-                    // unlocked => green
+                Room* door_room = find_room_by_position(game_map, x, y);
+                if (door_room && door_room->password_unlocked) {
+                    // green
                     attron(COLOR_PAIR(2));
-                    mvaddch(y, x, tile);
+                    mvaddch(y, x, '@');
                     attroff(COLOR_PAIR(2));
+                } else {
+                    // red
+                    attron(COLOR_PAIR(1));
+                    mvaddch(y, x, '@');
+                    attroff(COLOR_PAIR(1));
                 }
             }
 
@@ -647,6 +654,19 @@ void print_map(struct Map* game_map,
         }
     }
 }
+
+Room* find_room_by_position(struct Map* map, int x, int y) {
+    for (int i = 0; i < map->room_count; i++) {
+        Room* rm = &map->rooms[i];
+        if (x >= rm->left_wall && x <= rm->right_wall &&
+            y >= rm->top_wall && y <= rm->bottom_wall)
+        {
+            return rm;
+        }
+    }
+    return NULL;  // not in any room
+}
+
 
 void connect_rooms_with_corridors(struct Map* map) {
     bool connected[MAX_ROOMS] = { false };
@@ -740,8 +760,11 @@ void create_corridor_and_place_doors(struct Map* map, struct Point start, struct
                         if (rand() % 100 < 20) {
                             map->grid[current.y][next_x] = DOOR_PASSWORD;
                             // Immediately place a password generator tile in that room
-                            place_password_generator_in_corner(map, rm);
                             rm->has_password_door = true;
+                            rm->password_unlocked = false;
+                            rm->password_active   = false;
+                            rm->door_code[0] = '\0';
+                            place_password_generator_in_corner(map, rm);
                         }
                     }
 
@@ -855,89 +878,96 @@ void move_character(struct Point* character_location, int key,
     //    disallow movement
     // -----------------------------------------------------------
     if (target_tile == PASSWORD_GEN) {
-        if (!hasPassword) {
-            hasPassword = true;
-            int num = rand() % 10000; // 0..9999
-            snprintf(current_code, sizeof(current_code), "%04d", num);
+        // Identify the room
+        Room* current_room = find_room_by_position(game_map, new_location.x, new_location.y);
 
+        if (current_room && current_room->has_password_door) {
+            // If code not yet generated, do it now!
+            if (current_room->door_code[0] == '\0') {
+                // Generate a 4-digit code
+                int code_num = rand() % 10000; // 0..9999
+                snprintf(current_room->door_code, sizeof(current_room->door_code), "%04d", code_num);
+            }
+
+            // Store the code in our global variable
+            strncpy(current_code, current_room->door_code, sizeof(current_code) - 1);
+            current_code[sizeof(current_code) - 1] = '\0';
+
+            // Mark it visible and reset the timer
             code_visible = true;
             code_start_time = time(NULL);
 
-            // Print immediate feedback
-
-            // 1) Build the formatted string
-            char msg[128];
-            snprintf(msg, sizeof(msg),
-                    "Password generated: %s (valid for 30s)",
-                    current_code);
-
-            // 2) Print it at the right side with line_offset = MAP_HEIGHT + 5 (or any row you like)
-            print_password_messages(msg, MAP_HEIGHT + 5);
-
-            refresh();
+            // Call our display function right away so it appears immediately
+            update_password_display();
         }
-        // Optionally remove the tile or leave it so it can be stepped on again
-        // game_map->grid[new_location.y][new_location.x] = FLOOR;
     }
+
 
     else if (target_tile == DOOR_PASSWORD) {
-        if (!door_unlocked) {
-            // Prompt for code
-            // 1) Print the prompt at row 2, near the right side
-            print_password_messages("Enter 4-digit password: ", 2);
-
-            // 2) Decide which row you'll accept input on (the "next" line)
-            int input_line = 3;
-
-            // 3) Figure out the x column if you want it on the right side
-            int margin = 25;
-            int x = COLS - margin;
-            if (x < 0) x = 0;
-
-            // 4) Move the cursor to (input_line, x)
-            move(input_line, x);
-
-            // 5) Turn echo on so typed characters appear
-            echo();
-
-            // 6) Get up to 4 chars
-            char entered[5];
-            getnstr(entered, 4);
-
-            // 7) Turn echo off again
-            noecho();
-
-            if (entered[0] == '\0') {
-                // empty input => do not unlock
-                print_password_messages("No code entered!", 4);
-                print_password_messages("Door remains locked.", 5);
-                refresh();
-                getch();
-                return;
-            }
-            // Compare with current_code
-            if (strcmp(entered, current_code) == 0) {
-                // Correct code => unlock door
-                door_unlocked = true;
-                print_password_messages("Door unlocked!", 4);
-                refresh();
-                getch();
+        // Find the door's room
+        Room* door_room = find_room_by_position(game_map, new_location.x, new_location.y);
+        if (door_room && door_room->has_password_door) {
+        // Already unlocked?
+            if (door_room->password_unlocked) {
+                // Just move
+                *character_location = new_location;
             } else {
-                // Wrong code => block movement
-                print_password_messages("Wrong code!", 4);
-                print_password_messages("Door remains locked.", 5);
-                refresh();
-                getch(); // Wait for user key press
-                return;  // do not move
+                // Prompt for code
+                // 1) Print the prompt at row 2, near the right side
+                print_password_messages("Enter 4-digit password: ", 2);
+
+                // 2) Decide which row you'll accept input on (the "next" line)
+                int input_line = 3;
+
+                // 3) Figure out the x column if you want it on the right side
+                int margin = 25;
+                int x = COLS - margin;
+                if (x < 0) x = 0;
+
+                // 4) Move the cursor to (input_line, x)
+                move(input_line, x);
+
+                // 5) Turn echo on so typed characters appear
+                echo();
+
+                // 6) Get up to 4 chars
+                char entered[5];
+                getnstr(entered, 4);
+
+                // 7) Turn echo off again
+                noecho();
+
+                if (entered[0] == '\0') {
+                    // empty input => do not unlock
+                    print_password_messages("No code entered!", 4);
+                    print_password_messages("Door remains locked.", 5);
+                    refresh();
+                    getch();
+                    return;
+                }
+                // Compare with current_code
+                if (strcmp(entered, current_code) == 0) {
+                    // Correct code => unlock door
+                    door_room->password_unlocked = true;
+                    print_password_messages("Door unlocked!", 4);
+                    refresh();
+                    getch();
+                } else {
+                    // Wrong code => block movement
+                    print_password_messages("Wrong code!", 4);
+                    print_password_messages("Door remains locked.", 5);
+                    refresh();
+                    getch(); // Wait for user key press
+                    return;  // do not move
+                }
             }
+
+            // If we get here, door_unlocked is true => pass
+            *character_location = new_location;
+            // optionally do trap check, etc.
+            return;
         }
-
-        // If we get here, door_unlocked is true => pass
-        *character_location = new_location;
-        // optionally do trap check, etc.
-        return;
     }
-
 
 
     // -----------------------------------------------------------
@@ -993,35 +1023,27 @@ void print_password_messages(const char* message, int line_offset) {
 }
 
 void update_password_display() {
-    if (!code_visible) return;  // Not currently showing a code
+    if (!code_visible) return;
 
-    time_t now = time(NULL);
-    double elapsed = difftime(now, code_start_time);
-
-    // If > 30 seconds, hide it
+    double elapsed = difftime(time(NULL), code_start_time);
     if (elapsed > 30.0) {
         code_visible = false;
-
-        // Overwrite or clear the line on the right side
-        print_password_messages("                             ", MAP_HEIGHT + 5);
+        print_password_messages("                              ", MAP_HEIGHT + 5);
+        print_password_messages("                              ", MAP_HEIGHT + 6);
     } else {
-        // Still within 30s, ensure it’s printed
-        char msg[128];
-        char msg2[128];
-
+        char msg[128], msg2[128];
         snprintf(msg, sizeof(msg),
-                "Generated password: %s",
-                current_code);
-
-        // For the seconds left, do something like:
+                 "Room code: %s",
+                 current_code);
         snprintf(msg2, sizeof(msg2),
-                "(%.0f seconds left)",
-                30.0 - elapsed);
+                 "(%.0f seconds left)",
+                 30.0 - elapsed);
 
         print_password_messages(msg, MAP_HEIGHT + 5);
         print_password_messages(msg2, MAP_HEIGHT + 6);
     }
 }
+
 
 
 

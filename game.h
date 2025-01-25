@@ -82,7 +82,7 @@ typedef struct Room {
     bool password_unlocked;         // Is the door currently unlocked?
     bool password_active;           // Is there a valid password now?
     time_t password_gen_time;       // When the password was generated
-    char password[5];               // 4-digit code, +1 for null terminator
+    char door_code[6];            // 4-digit (zero-padded) code, plus 1 for the null terminator
 } Room;
 
 struct Map {
@@ -139,6 +139,7 @@ void create_corridors(Room* rooms, int room_count, char map[MAP_HEIGHT][MAP_WIDT
 void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count, int* score, int* hunger_rate);
 void add_traps(struct Map* game_map);
 void print_password_messages(const char* message, int line_offset);
+Room* find_room_by_position(struct Map* map, int x, int y);
 
 // Room and map generation
 bool is_valid_room_placement(struct Map* map, struct Room* room);
