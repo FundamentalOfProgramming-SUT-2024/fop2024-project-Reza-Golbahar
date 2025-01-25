@@ -203,8 +203,6 @@ void play_game(struct UserManager* manager, struct Map* game_map,
     }
 }
 
-// game.c
-
 void print_full_map(struct Map* game_map, struct Point* character_location) {
     for (int y = 0; y < MAP_HEIGHT; y++) {
         for (int x = 0; x < MAP_WIDTH; x++) {
@@ -263,8 +261,6 @@ void print_full_map(struct Map* game_map, struct Point* character_location) {
     // Optionally, display a message indicating that the full map is being shown
     mvprintw(MAP_HEIGHT + 7, 0, "Full map displayed. Press 'm' to hide.");
 }
-
-
 
 struct Map generate_map(struct Room* previous_room) {
     struct Map map;
@@ -438,9 +434,6 @@ void add_traps(struct Map* game_map) {
     }
 }
 
-
-
-
 void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count,
                          int* score, int* hunger_rate,
                          int* ancient_key_count, int* broken_key_count){
@@ -521,8 +514,6 @@ void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count,
     }
 }
 
-
-// Implementation of print_point
 void print_point(struct Point p, const char* type) {
     if (p.y < 0 || p.x < 0 || p.y >= MAP_HEIGHT || p.x >= MAP_WIDTH) return;
 
@@ -613,8 +604,6 @@ void sight_range(struct Map* game_map, struct Point* character_location) {
     }
 }
 
-
-// Add this after room generation in generate_map
 void add_food(struct Map* game_map) {
     const int FOOD_COUNT = 10;  // Adjust as needed
     int food_placed = 0;
@@ -631,8 +620,6 @@ void add_food(struct Map* game_map) {
     }
 }
 
-
-// Helper function for corridor visibility
 void showCorridorVisibility(struct Map* game_map, int x, int y) {
     // Use SIGHT_RANGE directly from game.h
     for (int dy = -SIGHT_RANGE; dy <= SIGHT_RANGE; dy++) {
@@ -734,7 +721,6 @@ void print_map(struct Map* game_map,
     }
 }
 
-
 Room* find_room_by_position(struct Map* map, int x, int y) {
     for (int i = 0; i < map->room_count; i++) {
         Room* rm = &map->rooms[i];
@@ -746,7 +732,6 @@ Room* find_room_by_position(struct Map* map, int x, int y) {
     }
     return NULL;  // not in any room
 }
-
 
 void connect_rooms_with_corridors(struct Map* map) {
     bool connected[MAX_ROOMS] = { false };
@@ -806,7 +791,6 @@ void connect_rooms_with_corridors(struct Map* map) {
         }
     }
 }
-
 
 void create_corridor_and_place_doors(struct Map* map, struct Point start, struct Point end) {
     struct Point current = start;
@@ -900,7 +884,6 @@ void create_corridor_and_place_doors(struct Map* map, struct Point start, struct
     }
 }
 
-
 void place_password_generator_in_corner(struct Map* map, struct Room* room) {
     // Define the four "inner" corners (one tile away from walls)
     int corners[4][2] = {
@@ -931,7 +914,6 @@ void place_password_generator_in_corner(struct Map* map, struct Room* room) {
     // (This is unlikely if the room is large enough).
 }
 
-// Update movement validation to handle doors
 void move_character(struct Point* character_location, int key,
                     struct Map* game_map, int* hitpoints){
     struct Point new_location = *character_location;
@@ -1233,17 +1215,12 @@ void init_map(struct Map* map) {
     map->trap_count = 0; // Initialize trap count
 }
 
-
-
 bool rooms_overlap(const struct Room* r1, const struct Room* r2) {
     return !(r1->right_wall + MIN_ROOM_DISTANCE < r2->left_wall ||
              r2->right_wall + MIN_ROOM_DISTANCE < r1->left_wall ||
              r1->top_wall + MIN_ROOM_DISTANCE < r2->bottom_wall ||
              r2->top_wall + MIN_ROOM_DISTANCE < r1->bottom_wall);
 }
-
-
-
 
 void add_gold(struct Map* game_map) {
     const int GOLD_COUNT = 10;  // Adjust as needed
@@ -1261,7 +1238,6 @@ void add_gold(struct Map* game_map) {
     }
 }
 
-
 void message(const char* text) {
     mvprintw(MAP_HEIGHT, 0, "%s", text);
     refresh();
@@ -1271,7 +1247,6 @@ bool isPointInRoom(struct Point* point, struct Room* room) {
     return (point->x >= room->left_wall && point->x <= room->right_wall &&
             point->y >= room->top_wall && point->y <= room->bottom_wall);
 }
-
 
 void showRoom(struct Map* game_map, struct Room* room, char visible[MAP_HEIGHT][MAP_WIDTH]) {
     for (int y = room->bottom_wall; y <= room->top_wall; y++) {
@@ -1452,11 +1427,6 @@ void update_visibility(struct Map* game_map, struct Point* player_pos, bool visi
     }
 }
 
-
-
-
-
-
 void place_stairs(struct Map* map) {
     // Place stairs in a random room that doesn't already have stairs
     while (1) {
@@ -1541,8 +1511,6 @@ bool can_see_room(struct Map* map, struct Room* room1, struct Room* room2) {
     return true;
 }
 
-
-// Add validation for staircase placement
 bool validate_stair_placement(struct Map* map) {
     int stair_count = 0;
     for (int y = 0; y < MAP_HEIGHT; y++) {
@@ -1680,7 +1648,6 @@ bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game) 
     fclose(file);
     return true;
 }
-
 
 void list_saved_games(struct UserManager* manager) {
     if (!manager->current_user) return;
