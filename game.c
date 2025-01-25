@@ -646,21 +646,6 @@ void print_map(struct Map* game_map,
     }
 }
 
-
-
-void place_password_generator_in_corner(struct Map* map, struct Room* room) {
-    // Let's pick the top-left corner inside the walls:
-    // The inside corner might be (room->left_wall + 1, room->top_wall + 1)
-    int corner_x = room->left_wall + 1;
-    int corner_y = room->top_wall + 1;
-
-    // Make sure it's a FLOOR or suitable spot
-    if (map->grid[corner_y][corner_x] == FLOOR) {
-        map->grid[corner_y][corner_x] = PASSWORD_GEN; // '&'
-    }
-}
-
-
 void connect_rooms_with_corridors(struct Map* map) {
     bool connected[MAX_ROOMS] = { false };
     connected[0] = true;
@@ -724,39 +709,40 @@ void connect_rooms_with_corridors(struct Map* map) {
 void create_corridor_and_place_doors(struct Map* map, struct Point start, struct Point end) {
     struct Point current = start;
 
-    // Move horizontally from 'start' to end.x
+    // Move horizontally
     while (current.x != end.x) {
         int step = (current.x < end.x) ? 1 : -1;
         int next_x = current.x + step;
 
+        // 1) If FOG => carve corridor
         if (map->grid[current.y][next_x] == FOG) {
-            // Carve corridor
             map->grid[current.y][next_x] = CORRIDOR;
         }
+        // 2) If wall => place door
         else if (map->grid[current.y][next_x] == WALL_HORIZONTAL ||
                  map->grid[current.y][next_x] == WALL_VERTICAL ||
-                 map->grid[current.y][next_x] == WINDOW) 
+                 map->grid[current.y][next_x] == WINDOW)
         {
             // Place a normal door by default
             map->grid[current.y][next_x] = DOOR;
 
-            // Identify which room boundary we just hit
+            // Find the room boundary we just hit
             for (int r = 0; r < map->room_count; r++) {
                 Room* rm = &map->rooms[r];
-                if (next_x >= rm->left_wall && next_x <= rm->right_wall &&
-                    current.y >= rm->top_wall && current.y <= rm->bottom_wall)
+                if (   next_x >= rm->left_wall && next_x <= rm->right_wall
+                    && current.y >= rm->top_wall && current.y <= rm->bottom_wall)
                 {
-                    // If this room already has >=1 door, it won't be a dead end.
-                    // So we allow a chance to become a password door.
-                    // If it has 0 doors, it's potentially a dead-end => do NOT place password door.
+                    // If room->door_count >= 1 => not guaranteed dead end
                     if (rm->door_count >= 1) {
-                        // e.g., 20% chance for a password door
+                        // 20% chance to become a password door
                         if (rand() % 100 < 20) {
                             map->grid[current.y][next_x] = DOOR_PASSWORD;
+                            // Immediately place a password generator tile in that room
+                            place_password_generator_in_corner(map, rm);
                         }
                     }
 
-                    // Record the door location in this room
+                    // Record the door in rm->doors[]
                     if (rm->door_count < MAX_DOORS) {
                         rm->doors[rm->door_count].x = next_x;
                         rm->doors[rm->door_count].y = current.y;
@@ -766,40 +752,35 @@ void create_corridor_and_place_doors(struct Map* map, struct Point start, struct
                 }
             }
         }
-
         current.x = next_x;
     }
 
-    // Then do the same logic vertically until current.y == end.y
+    // Move vertically
     while (current.y != end.y) {
         int step = (current.y < end.y) ? 1 : -1;
         int next_y = current.y + step;
 
         if (map->grid[next_y][current.x] == FOG) {
-            // Carve corridor
             map->grid[next_y][current.x] = CORRIDOR;
         }
         else if (map->grid[next_y][current.x] == WALL_HORIZONTAL ||
                  map->grid[next_y][current.x] == WALL_VERTICAL ||
                  map->grid[next_y][current.x] == WINDOW)
         {
-            // Place a normal door by default
             map->grid[next_y][current.x] = DOOR;
 
-            // Identify which room boundary we just hit
             for (int r = 0; r < map->room_count; r++) {
                 Room* rm = &map->rooms[r];
-                if (current.x >= rm->left_wall && current.x <= rm->right_wall &&
-                    next_y >= rm->top_wall && next_y <= rm->bottom_wall)
+                if (   current.x >= rm->left_wall && current.x <= rm->right_wall
+                    && next_y >= rm->top_wall && next_y <= rm->bottom_wall)
                 {
                     if (rm->door_count >= 1) {
-                        // e.g., 20% chance for a password door
                         if (rand() % 100 < 20) {
                             map->grid[next_y][current.x] = DOOR_PASSWORD;
+                            place_password_generator_in_corner(map, rm);
                         }
                     }
 
-                    // Record the door location
                     if (rm->door_count < MAX_DOORS) {
                         rm->doors[rm->door_count].x = current.x;
                         rm->doors[rm->door_count].y = next_y;
@@ -809,11 +790,40 @@ void create_corridor_and_place_doors(struct Map* map, struct Point start, struct
                 }
             }
         }
-
         current.y = next_y;
     }
 }
 
+
+void place_password_generator_in_corner(struct Map* map, struct Room* room) {
+    // Define the four "inner" corners (one tile away from walls)
+    int corners[4][2] = {
+        { room->left_wall + 1,  room->top_wall + 1 },      // Top-left
+        { room->right_wall - 1, room->top_wall + 1 },      // Top-right
+        { room->left_wall + 1,  room->bottom_wall - 1 },   // Bottom-left
+        { room->right_wall - 1, room->bottom_wall - 1 }    // Bottom-right
+    };
+
+    // Randomly start from one corner and check the next if it's not suitable
+    // This way, it's less predictable. If you want a single corner always, just pick one.
+    int corner_index = rand() % 4;
+    for (int i = 0; i < 4; i++) {
+        int cx = corners[corner_index][0];
+        int cy = corners[corner_index][1];
+
+        // Only place the generator if it's currently a floor tile
+        if (map->grid[cy][cx] == FLOOR) {
+            map->grid[cy][cx] = PASSWORD_GEN;  // '&'
+            return;
+        }
+
+        // Move to the next corner in the array
+        corner_index = (corner_index + 1) % 4;
+    }
+
+    // If none of the corners were valid (all blocked), do nothing
+    // (This is unlikely if the room is large enough).
+}
 
 
 
@@ -841,11 +851,19 @@ void move_character(struct Point* character_location, int key,
     // 1) If it's a locked password door and we have NO password,
     //    disallow movement
     // -----------------------------------------------------------
-    if (target_tile == DOOR_PASSWORD && !hasPassword) {
-        mvprintw(MAP_HEIGHT + 6, 0, "This door is locked! You need the password.");
-        refresh();
-        return; // Do NOT move onto the tile
+    if (target_tile == PASSWORD_GEN) {
+        if (!hasPassword) {
+            hasPassword = true;
+            // Generate 4-digit code
+            int num = rand() % 10000;
+            snprintf(current_code, sizeof(current_code), "%04d", num);
+            mvprintw(MAP_HEIGHT + 6, 0, "New password: %s", current_code);
+            refresh();
+        }
+        // Optionally remove the tile or leave it so it can be stepped on again
+        // game_map->grid[new_location.y][new_location.x] = FLOOR;
     }
+
 
     // -----------------------------------------------------------
     // 2) If it's one of these, it's impassable

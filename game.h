@@ -162,6 +162,7 @@ bool canSeeRoomThroughWindow(struct Map* game_map, struct Room* room1, struct Ro
 // game.h
 void move_character(struct Point* character_location, int key,
                     struct Map* game_map, int* hitpoints);
+void place_password_generator_in_corner(struct Map* map, struct Room* room);
 void update_visibility(struct Map* map, struct Point* player_pos, bool visible[MAP_HEIGHT][MAP_WIDTH]);
 void sight_range(struct Map* game_map, struct Point* character_location);
 
