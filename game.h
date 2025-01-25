@@ -159,7 +159,9 @@ void add_gold(struct Map* game_map);
 bool canSeeRoomThroughWindow(struct Map* game_map, struct Room* room1, struct Room* room2);
 
 // Movement and visibility
-void move_character(struct Point* character_location, int key, struct Map* game_map);
+// game.h
+void move_character(struct Point* character_location, int key,
+                    struct Map* game_map, int* hitpoints);
 void update_visibility(struct Map* map, struct Point* player_pos, bool visible[MAP_HEIGHT][MAP_WIDTH]);
 void sight_range(struct Map* game_map, struct Point* character_location);
 

@@ -101,7 +101,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             case KEY_LEFT:
             case KEY_RIGHT:
                 // Move the character
-                move_character(character_location, key, game_map);
+                move_character(character_location, key, game_map, &hitpoints);
 
                 // Check the tile the player moves onto
                 char tile = game_map->grid[character_location->y][character_location->x];
@@ -629,7 +629,16 @@ void print_map(struct Map* game_map,
                     mvaddch(y, x, tile);
                     attroff(COLOR_PAIR(2));
                 }
-            } else {
+            }
+
+            else if (tile == TRAP_SYMBOL) {
+                // Print triggered trap in red (pair #4 if you added a new one)
+                attron(COLOR_PAIR(4));
+                mvaddch(y, x, tile);
+                attroff(COLOR_PAIR(4));
+            }
+            
+            else {
                 // Normal tile printing
                 mvaddch(y, x, tile);
             }
@@ -809,9 +818,9 @@ void create_corridor_and_place_doors(struct Map* map, struct Point start, struct
 
 
 // Update movement validation to handle doors
-void move_character(struct Point* character_location, int key, struct Map* game_map) {
+void move_character(struct Point* character_location, int key,
+                    struct Map* game_map, int* hitpoints){
     struct Point new_location = *character_location;
-
     switch (key) {
         case KEY_UP:    new_location.y--; break;
         case KEY_DOWN:  new_location.y++; break;
@@ -823,71 +832,35 @@ void move_character(struct Point* character_location, int key, struct Map* game_
     // Bounds check
     if (new_location.x < 0 || new_location.x >= MAP_WIDTH ||
         new_location.y < 0 || new_location.y >= MAP_HEIGHT) {
-        return; // out of map bounds, do nothing
+        return; // Out of map bounds, ignore
     }
 
-    // Pseudocode in move_character:
     char target_tile = game_map->grid[new_location.y][new_location.x];
 
-    if (target_tile == PASSWORD_GEN) { // '&'
-        hasPassword = true; // now we have the password
-        // 1) Generate a 4-digit number:
-        int num = rand() % 10000;  // 0..9999
+    // Check locked password door, secret door, walls, etc. (example code)...
 
-        // 2) Convert to 4-digit string with leading zeros
-        snprintf(current_code, sizeof(current_code), "%04d", num);
-
-        // 3) Mark code as visible, store generation time
-        code_visible = true;
-        code_start_time = time(NULL);
-
-        // 4) Print on screen immediately
-        mvprintw(MAP_HEIGHT + 1, 0, "New password generated: %s", current_code);
-        refresh();
-    }
-
-    if (target_tile == DOOR_PASSWORD) { // '@'
-        if (!hasPassword) {
-            mvprintw(MAP_HEIGHT + 1, 0, "This door is locked! You need a password.");
-            refresh();
-            // Don't allow movement
-            return;
-        }
-}
-
-
-
-    // 1) If it's a SECRET_DOOR_CLOSED, reveal it:
-    if (target_tile == SECRET_DOOR_CLOSED) {
-        // Reveal it
-        game_map->grid[new_location.y][new_location.x] = SECRET_DOOR_REVEALED;
-
-        // Optionally print a message
-        mvprintw(MAP_HEIGHT + 6, 0, "You found a secret door!");
-        refresh();
-
-        // Now treat it like a normal passable door
-        *character_location = new_location;
-        return;
-    }
-
-    // 2) If the tile is passable (floor, corridor, revealed door, etc.), move:
-    if (target_tile != FOG && 
-        target_tile != WALL_HORIZONTAL &&
+    // Move onto the tile if passable
+    if (target_tile != WALL_HORIZONTAL && 
         target_tile != WALL_VERTICAL &&
         target_tile != WINDOW &&
-        target_tile != PILLAR) {
-
+        target_tile != PILLAR &&
+        target_tile != FOG) 
+    {
+        // Update player's location
         *character_location = new_location;
 
-        // If you have trap logic, handle it here...
+        // If it's a trap location, trigger damage
         for (int i = 0; i < game_map->trap_count; i++) {
             Trap* trap = &game_map->traps[i];
-            if (trap->location.x == new_location.x && trap->location.y == new_location.y) {
+            if (trap->location.x == new_location.x &&
+                trap->location.y == new_location.y)
+            {
                 if (!trap->triggered) {
+                    // Reveal the trap
                     trap->triggered = true;
                     game_map->grid[new_location.y][new_location.x] = TRAP_SYMBOL;
-                    mvprintw(MAP_HEIGHT + 6, 0, "You triggered a trap!");
+                    *hitpoints -= 10;  // Reduce HP
+                    mvprintw(MAP_HEIGHT + 6, 0, "You triggered a trap! HP -10.");
                     refresh();
                 }
                 break;
@@ -895,6 +868,7 @@ void move_character(struct Point* character_location, int key, struct Map* game_
         }
     }
 }
+
 
 void update_password_display() {
     if (!code_visible) return; // No code displayed currently

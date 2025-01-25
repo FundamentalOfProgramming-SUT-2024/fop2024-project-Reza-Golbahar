@@ -25,6 +25,8 @@ bool init_ncurses(void) {
     init_pair(1, COLOR_RED,   -1); // قرمز: در قفل
     init_pair(2, COLOR_GREEN, -1); // سبز: در باز
     init_pair(3, COLOR_YELLOW, -1); // زرد: دکمه رمز
+    init_pair(4, COLOR_RED,   -1); // For traps
+
 
     return true;
 }
