@@ -232,6 +232,12 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                 open_weapon_inventory_menu(&player, game_map);
                 break;
 
+            case 's':
+            case 'S':
+                // Open spell inventory menu
+                open_spell_inventory_menu(game_map, &player);
+                break;
+
             case 'q':
                 game_running = false;
                 break;
@@ -386,6 +392,7 @@ struct Map generate_map(struct Room* previous_room) {
     add_gold(&map);
     add_traps(&map);
     add_weapons(&map);
+    add_spells(&map);
 
     add_ancient_key(&map);
 
@@ -761,9 +768,29 @@ void print_map(struct Map* game_map,
                 mvaddch(y, x, tile);
                 attroff(COLOR_PAIR(3));
             }
-            else {
-                // Normal tile printing
-                mvaddch(y, x, tile);
+            // Apply color and print based on tile type
+            switch(tile) {
+                case SPELL_HEALTH:
+                    //attron(COLOR_PAIR(10)); // Define a new color pair for Health Spells
+                    mvaddch(y, x, SPELL_HEALTH);
+                    //attroff(COLOR_PAIR(10));
+                    break;
+                case SPELL_SPEED:
+                    //attron(COLOR_PAIR(11)); // Define a new color pair for Speed Spells
+                    mvaddch(y, x, SPELL_SPEED);
+                    //attroff(COLOR_PAIR(11));
+                    break;
+                case SPELL_DAMAGE:
+                    //attron(COLOR_PAIR(12)); // Define a new color pair for Damage Spells
+                    mvaddch(y, x, SPELL_DAMAGE);
+                    //attroff(COLOR_PAIR(12));
+                    break;
+                // [Handle other tile types...]
+
+                default:
+                    // Normal tile printing with default color
+                    mvaddch(y, x, tile);
+                    break;
             }
         }
     }
@@ -1113,6 +1140,7 @@ void move_character(Player* player, int key, struct Map* game_map, int* hitpoint
     
     handle_weapon_pickup(player, game_map, new_location);
 
+    handle_spell_pickup(player, game_map, new_location);
 
     // -----------------------------------------------------------
     // 3) Trap logic: If we just moved onto a trap location, trigger damage
@@ -2025,5 +2053,293 @@ void open_weapon_inventory_menu(Player* player, struct Map* map) {
     }
 }
 
+// Function to create a spell based on its symbol
+Spell create_spell(char symbol) {
+    Spell spell;
+    spell.symbol = symbol;
+    spell.type = SPELL_UNKNOWN_TYPE;
+    spell.effect_value = 0;
 
+    switch(symbol) {
+        case SPELL_HEALTH:
+            strcpy(spell.name, "Health Spell");
+            spell.type = SPELL_HEALTH_TYPE;
+            spell.effect_value = 20; // Heals 20 hitpoints
+            break;
+        case SPELL_SPEED:
+            strcpy(spell.name, "Speed Spell");
+            spell.type = SPELL_SPEED_TYPE;
+            spell.effect_value = 5; // Increases speed by 5 units (implementation dependent)
+            break;
+        case SPELL_DAMAGE:
+            strcpy(spell.name, "Damage Spell");
+            spell.type = SPELL_DAMAGE_TYPE;
+            spell.effect_value = 15; // Deals 15 damage to enemies
+            break;
+        default:
+            strcpy(spell.name, "Unknown Spell");
+            spell.type = SPELL_UNKNOWN_TYPE;
+            spell.effect_value = 0;
+    }
 
+    return spell;
+}
+
+void add_spells(struct Map* game_map) {
+    const int SPELL_COUNT = 5; // Adjust as needed
+    int spells_placed = 0;
+    char spell_symbols[] = {SPELL_HEALTH, SPELL_SPEED, SPELL_DAMAGE};
+    int num_spell_types = sizeof(spell_symbols) / sizeof(spell_symbols[0]);
+
+    while (spells_placed < SPELL_COUNT) {
+        int x = rand() % MAP_WIDTH;
+        int y = rand() % MAP_HEIGHT;
+
+        // Place spells only on floor tiles within rooms and ensure no overlap with existing items
+        bool inside_room = false;
+        for (int i = 0; i < game_map->room_count; i++) {
+            if (isPointInRoom(&(struct Point){x, y}, &game_map->rooms[i])) {
+                inside_room = true;
+                break;
+            }
+        }
+
+        if (inside_room && game_map->grid[y][x] == FLOOR) {
+            // Randomly select a spell type
+            char spell_symbol = spell_symbols[rand() % num_spell_types];
+            game_map->grid[y][x] = spell_symbol;
+            spells_placed++;
+        }
+    }
+}
+
+void handle_spell_pickup(Player* player, struct Map* map, struct Point new_location) {
+    char tile = map->grid[new_location.y][new_location.x];
+    
+    // Check if the tile is a spell
+    if (tile == SPELL_HEALTH || tile == SPELL_SPEED || tile == SPELL_DAMAGE) {
+        
+        if (player->spell_count >= MAX_SPELLS) {
+            // Inventory full, notify the player
+            mvprintw(12, 80, "Your spell inventory is full! Cannot pick up %s.", spell_type_to_name(
+                (tile == SPELL_HEALTH) ? SPELL_HEALTH_TYPE :
+                (tile == SPELL_SPEED)  ? SPELL_SPEED_TYPE :
+                SPELL_DAMAGE_TYPE
+            ));
+            refresh();
+            getch();
+            return;
+        }
+
+        // Create the spell based on the symbol
+        Spell picked_spell = create_spell(tile);
+        player->spells[player->spell_count++] = picked_spell;
+
+        // Remove the spell from the map
+        map->grid[new_location.y][new_location.x] = FLOOR;
+
+        // Notify the player
+        char message[100];
+        snprintf(message, sizeof(message), "You picked up a %s!", picked_spell.name);
+        mvprintw(12, 80, "%s", message);
+        refresh();
+        getch();
+    }
+}
+
+const char* spell_type_to_name(SpellType type) {
+    switch(type) {
+        case SPELL_HEALTH_TYPE:
+            return "Health Spell";
+        case SPELL_SPEED_TYPE:
+            return "Speed Spell";
+        case SPELL_DAMAGE_TYPE:
+            return "Damage Spell";
+        default:
+            return "Unknown Spell";
+    }
+}
+
+void open_spell_inventory_menu(struct Map* game_map, Player* player) {
+    bool menu_open = true;
+
+    while (menu_open) {
+        clear();
+        mvprintw(0, 0, "Spell Inventory:");
+
+        if (player->spell_count == 0) {
+            mvprintw(2, 2, "No spells collected.");
+        } else {
+            for (int i = 0; i < player->spell_count; i++) {
+                mvprintw(2 + i, 2, "Spell %d: %s (Effect: %d)%s", 
+                         i + 1, 
+                         player->spells[i].name, 
+                         player->spells[i].effect_value,
+                         ""); // Optionally mark if spell is active
+            }
+        }
+
+        // Display menu options
+        mvprintw(4 + player->spell_count, 0, "Options:");
+        mvprintw(5 + player->spell_count, 2, "u <number> - Use spell");
+        mvprintw(6 + player->spell_count, 2, "d <number> - Drop spell");
+        mvprintw(7 + player->spell_count, 2, "q         - Quit spell inventory");
+        refresh();
+
+        // Prompt for user input
+        mvprintw(9 + player->spell_count, 0, "Enter your choice: ");
+        refresh();
+
+        // Read input (simple approach)
+        char input[10];
+        echo();
+        getnstr(input, sizeof(input) - 1);
+        noecho();
+
+        // Parse input
+        if (strlen(input) == 0) {
+            continue;
+        }
+
+        char command = tolower(input[0]);
+
+        if (command == 'q') {
+            menu_open = false;
+            continue;
+        }
+        else if (command == 'u') {
+            // Use spell
+            if (player->spell_count == 0) {
+                mvprintw(12, 0, "No spells to use.");
+                refresh();
+                getch();
+                continue;
+            }
+
+            int spell_num = atoi(&input[1]) - 1; // Convert to 0-based index
+            if (spell_num >= 0 && spell_num < player->spell_count) {
+                use_spell(player, NULL); // Pass game_map if spell effects depend on it
+            } else {
+                mvprintw(12, 0, "Invalid spell number!");
+                refresh();
+                getch();
+            }
+        }
+        else if (command == 'd') {
+            // Drop spell
+            if (player->spell_count == 0) {
+                mvprintw(12, 0, "No spells to drop.");
+                refresh();
+                getch();
+                continue;
+            }
+
+            int spell_num = atoi(&input[1]) - 1; // Convert to 0-based index
+            if (spell_num >= 0 && spell_num < player->spell_count) {
+                // Drop the spell on the current location if possible
+                struct Point drop_location = player->location;
+                char current_tile = game_map->grid[drop_location.y][drop_location.x];
+
+                if (current_tile == FLOOR) {
+                    // Place the spell symbol on the map
+                    game_map->grid[drop_location.y][drop_location.x] = player->spells[spell_num].symbol;
+
+                    // Notify the player
+                    char message[100];
+                    snprintf(message, sizeof(message), "You dropped a %s at your current location.", player->spells[spell_num].name);
+                    mvprintw(12, 0, "%s", message);
+                    refresh();
+                    getch();
+
+                    // Remove the spell from inventory
+                    for (int i = spell_num; i < player->spell_count - 1; i++) {
+                        player->spells[i] = player->spells[i + 1];
+                    }
+                    player->spell_count--;
+                } else {
+                    mvprintw(12, 0, "Cannot drop spell here. Tile is not empty.");
+                    refresh();
+                    getch();
+                }
+            } else {
+                mvprintw(12, 0, "Invalid spell number!");
+                refresh();
+                getch();
+            }
+        }
+        else {
+            mvprintw(12, 0, "Invalid command!");
+            refresh();
+            getch();
+        }
+    }
+}
+
+void use_spell(Player* player, struct Map* game_map) {
+    if (player->spell_count == 0) {
+        mvprintw(14, 80, "No spells to use!");
+        refresh();
+        getch();
+        return;
+    }
+
+    // Prompt user to select a spell
+    mvprintw(14, 80, "Enter spell number to use: ");
+    refresh();
+
+    char input[10];
+    echo();
+    getnstr(input, sizeof(input) - 1);
+    noecho();
+
+    if (strlen(input) == 0) {
+        return;
+    }
+
+    int spell_num = atoi(input) - 1; // Convert to 0-based index
+
+    if (spell_num < 0 || spell_num >= player->spell_count) {
+        mvprintw(16, 80, "Invalid spell number!");
+        refresh();
+        getch();
+        return;
+    }
+
+    Spell* spell = &player->spells[spell_num];
+
+    switch(spell->type) {
+        case SPELL_HEALTH_TYPE:
+            player->hitpoints += spell->effect_value;
+            if (player->hitpoints > 100) player->hitpoints = 100; // Assuming 100 is max
+            mvprintw(16, 80, "Used Health Spell! Hitpoints increased by %d.", spell->effect_value);
+            break;
+
+        case SPELL_SPEED_TYPE:
+            // Implement speed effect (e.g., increase movement speed for a duration)
+            // This requires additional game logic to handle temporary effects
+            mvprintw(16, 80, "Used Speed Spell! (Effect not implemented yet.)");
+            break;
+
+        case SPELL_DAMAGE_TYPE:
+            // Implement damage effect (e.g., attack all enemies in range)
+            // Requires enemy management
+            mvprintw(16, 80, "Used Damage Spell! (Effect not implemented yet.)");
+            break;
+
+        default:
+            mvprintw(16, 80, "Unknown spell type!");
+            break;
+    }
+
+    refresh();
+    getch();
+
+    // Optionally, remove the spell after use if spells are single-use
+    // Uncomment the following lines if spells are consumable
+    /*
+    for (int i = spell_num; i < player->spell_count - 1; i++) {
+        player->spells[i] = player->spells[i + 1];
+    }
+    player->spell_count--;
+    */
+}

@@ -23,16 +23,16 @@ bool init_ncurses(void) {
     start_color();
     use_default_colors();
 
-    init_pair(1, COLOR_RED,   -1); // قرمز: در قفل
-    init_pair(2, COLOR_GREEN, -1); // سبز: در باز
-    init_pair(3, COLOR_YELLOW, -1); // زرد: دکمه رمز
-    init_pair(4, COLOR_RED,   -1); // For traps
-    init_color(200, 1000, 647, 0); // This is just an example if the terminal supports init_color
-    init_pair(6, 200, COLOR_BLACK);
-    init_pair(7, COLOR_RED, COLOR_BLACK);
-    init_pair(5, COLOR_YELLOW, COLOR_BLACK);
-    init_pair(8, COLOR_YELLOW, COLOR_BLACK);  // Approx. gold on black //for ancient key
-    init_pair(9, COLOR_BLUE, COLOR_BLACK);     // Secret doors as blue '?' symbol
+    init_pair(1, COLOR_RED, COLOR_BLACK);     // Locked doors
+    init_pair(2, COLOR_GREEN, COLOR_BLACK);   // Unlocked doors
+    init_pair(3, COLOR_YELLOW, COLOR_BLACK);  // Weapons
+    init_pair(4, COLOR_MAGENTA, COLOR_BLACK); // Traps
+    init_pair(5, COLOR_YELLOW, COLOR_BLACK);  // Warning messages
+    init_pair(6, COLOR_CYAN, COLOR_BLACK);    // Other
+    init_pair(7, COLOR_RED, COLOR_BLACK);     // Final fail messages
+    init_pair(8, COLOR_YELLOW, COLOR_BLACK);  // Ancient Keys
+    init_pair(9, COLOR_BLUE, COLOR_BLACK);    // Secret Doors
+
 
     return true;
 }

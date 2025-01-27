@@ -27,7 +27,7 @@
 
 
 // -- Secret doors --
-#define SECRET_DOOR_CLOSED 'S'    // Placeholder for secret doors in the grid
+#define SECRET_DOOR_CLOSED '-'    // Placeholder for secret doors in the grid
 #define SECRET_DOOR_REVEALED '?'   // Symbol to display when revealed
 
 #define DOOR_PASSWORD '@'
@@ -43,8 +43,14 @@
 #define WEAPON_ARROW        '4'
 #define WEAPON_SWORD        '5'
 
+// Spell Symbols
+#define SPELL_HEALTH 'H'
+#define SPELL_SPEED  'S'
+#define SPELL_DAMAGE 'D'
+
 // Maximum number of weapons a player can carry
 #define MAX_WEAPONS         10
+#define MAX_SPELLS 10
 
 
 // Map constants
@@ -121,6 +127,22 @@ typedef struct Weapon {
     // Add more attributes as needed (e.g., durability, special effects)
 } Weapon;
 
+// Spell Types
+typedef enum {
+    SPELL_HEALTH_TYPE,
+    SPELL_SPEED_TYPE,
+    SPELL_DAMAGE_TYPE,
+    SPELL_UNKNOWN_TYPE
+} SpellType;
+
+// Spell Structure
+typedef struct Spell {
+    SpellType type;
+    char symbol;        // Symbol representing the spell on the map
+    char name[20];      // Name of the spell
+    int effect_value;   // Value associated with the spell (e.g., heal amount, speed boost)
+} Spell;
+
 // Player structure update to include weapon inventory
 typedef struct Player {
     struct Point location;
@@ -138,6 +160,9 @@ typedef struct Player {
     // Key counts
     int ancient_key_count;
     int broken_key_count;
+
+    Spell spells[MAX_SPELLS];
+    int spell_count;
     
     // ... [other player attributes]
 } Player;
@@ -245,5 +270,13 @@ Weapon create_weapon(char symbol);
 //void display_weapons_inventory(Player* player);
 void equip_weapon(Player* player, int weapon_index);
 void use_weapon(Player* player);
+
+// Function Declarations
+Spell create_spell(char symbol);
+void handle_spell_pickup(Player* player, struct Map* map, struct Point new_location);
+void open_spell_inventory_menu(struct Map* game_map, Player* player);
+void use_spell(Player* player, struct Map* game_map);
+const char* spell_type_to_name(SpellType type);
+void add_spells(struct Map* game_map);
 
 #endif
