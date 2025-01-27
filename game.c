@@ -24,12 +24,14 @@ bool hasPassword = false;  // The single definition
 //For Ancient Keys
 int ancient_key_count = 0;
 int broken_key_count = 0;
+Weapon weapons_list[WEAPON_COUNT];
+
 
 void play_game(struct UserManager* manager, struct Map* game_map, 
-               struct Point* character_location, int initial_score) {
-    int current_level = 1;  // Start at level 1
+              struct Point* character_location, int score, int current_level, Inventory* inventory) {
+    //int current_level = 1;  // Start at level 1
     bool game_running = true;
-    int score = initial_score;
+    //int score = initial_score;
 
     bool show_map = false;  // Flag to track map visibility
 
@@ -120,7 +122,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             case KEY_LEFT:
             case KEY_RIGHT:
                 // Move the character
-                move_character(character_location, key, game_map, &hitpoints);
+                move_character(character_location, key, game_map, &hitpoints, inventory);
 
                 // Check the tile the player moves onto
                 char tile = game_map->grid[character_location->y][character_location->x];
@@ -187,8 +189,15 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             case 'e':
             case 'E':
                 // Open inventory menu
-                open_inventory_menu(food_inventory, &food_count, &gold_count, &score, &hunger_rate,
-                        &ancient_key_count, &broken_key_count);
+                open_inventory_menu(inventory->food_inventory, &inventory->food_count, &inventory->gold_count, 
+                                    &score, &hunger_rate, &inventory->ancient_key_count, 
+                                    &inventory->broken_key_count, inventory->weapon_counts);
+                break;
+
+            case 'i':
+            case 'I':
+                // Display weapons inventory
+                display_weapons(inventory);
                 break;
 
             case 'q':
@@ -406,6 +415,183 @@ void place_secret_doors(struct Map* map) {
     }
 }
 
+void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count,
+                         int* score, int* hunger_rate,
+                         int* ancient_key_count, int* broken_key_count,
+                         int weapon_counts[WEAPON_COUNT]){
+    bool menu_open = true;
+
+    while (menu_open) {
+        clear();
+        mvprintw(0, 0, "Inventory Menu");
+
+        // 1) Show food inventory
+        mvprintw(2, 0, "Food Inventory:");
+        for (int i = 0; i < 5; i++) {
+            if (food_inventory[i] == 1) {
+                mvprintw(4 + i, 0, "Slot %d: Food", i + 1);
+            } else {
+                mvprintw(4 + i, 0, "Slot %d: Empty", i + 1);
+            }
+        }
+
+        // 2) Show standard info
+        mvprintw(10, 0, "Gold Collected: %d", *gold_count);
+        mvprintw(11, 0, "Hunger: %d", *hunger_rate);
+
+        // 3) Show Ancient Key info
+        mvprintw(13, 0, "Ancient Keys (working): %d", *ancient_key_count);
+        mvprintw(14, 0, "Broken Key Pieces: %d", *broken_key_count);
+
+        // 4) Show Weapons Inventory
+        mvprintw(16, 0, "Weapons Inventory:");
+        for (int i = WEAPON_MACE; i < WEAPON_COUNT; i++) {
+            Weapon weapon = get_weapon_by_type((WeaponType)i);
+            mvprintw(18 + (i - WEAPON_MACE), 0, "%lc %s: %d", weapon.symbol,
+                     (i == WEAPON_MACE) ? "Mace" :
+                     (i == WEAPON_DAGGER) ? "Dagger" :
+                     (i == WEAPON_MAGIC_WAND) ? "Magic Wand" :
+                     (i == WEAPON_NORMAL_ARROW) ? "Normal Arrow" :
+                     (i == WEAPON_SWORD) ? "Sword" : "Unknown",
+                     weapon_counts[i]);
+        }
+
+        // 5) Instructions
+        mvprintw(24, 0, "Press 'u' + slot number (1-5) to use food, 'c' to combine 2 broken keys, 'q' to quit.");
+        refresh();
+
+        // Handle input
+        int key = getch();
+        switch (key) {
+            case 'q':
+                // Exit menu
+                menu_open = false;
+                break;
+
+            case 'u': {
+                // Using food from a slot
+                mvprintw(26, 0, "Enter slot number (1-5): ");
+                refresh();
+                int slot = getch() - '0'; // Convert char to integer
+
+                if (slot >= 1 && slot <= 5 && food_inventory[slot - 1] == 1) {
+                    // Use food
+                    food_inventory[slot - 1] = 0;
+                    (*food_count)--;
+                    *hunger_rate = (*hunger_rate > 20) ? (*hunger_rate - 20) : 0;
+
+                    mvprintw(28, 0, "You used food from slot %d! Hunger decreased.", slot);
+                } else {
+                    mvprintw(28, 0, "Invalid slot or no food in slot!");
+                }
+                refresh();
+                getch(); // Wait for player to acknowledge
+            } break;
+
+            case 'c': {
+                // Combine two broken key pieces into one working Ancient Key
+                if (*broken_key_count >= 2) {
+                    *broken_key_count -= 2;
+                    (*ancient_key_count)++;
+                    mvprintw(26, 0, "You combined two broken key pieces into one working Ancient Key!");
+                } else {
+                    mvprintw(26, 0, "Not enough broken key pieces to combine!");
+                }
+                refresh();
+                getch(); // Wait for player
+            } break;
+
+            default:
+                // Ignore other keys
+                break;
+        }
+    }
+}
+
+void init_weapons() {
+    weapons_list[WEAPON_NONE].type = WEAPON_NONE;
+    weapons_list[WEAPON_NONE].symbol = L' '; // No weapon
+    
+    weapons_list[WEAPON_MACE].type = WEAPON_MACE;
+    weapons_list[WEAPON_MACE].symbol = L'\u2692'; // ⚒️
+
+    weapons_list[WEAPON_DAGGER].type = WEAPON_DAGGER;
+    weapons_list[WEAPON_DAGGER].symbol = L'\U0001F5E1'; // 🗡️
+
+    weapons_list[WEAPON_MAGIC_WAND].type = WEAPON_MAGIC_WAND;
+    weapons_list[WEAPON_MAGIC_WAND].symbol = L'\U0001FA84'; // 🪄
+
+    weapons_list[WEAPON_NORMAL_ARROW].type = WEAPON_NORMAL_ARROW;
+    weapons_list[WEAPON_NORMAL_ARROW].symbol = L'\u27B3'; // ➳
+
+    weapons_list[WEAPON_SWORD].type = WEAPON_SWORD;
+    weapons_list[WEAPON_SWORD].symbol = L'\u2694'; // ⚔️
+}
+
+// Retrieve weapon by type
+Weapon get_weapon_by_type(WeaponType type) {
+    if (type >= WEAPON_NONE && type < WEAPON_COUNT) {
+        return weapons_list[type];
+    }
+    // Return a default weapon if type is invalid
+    Weapon default_weapon;
+    default_weapon.type = WEAPON_NONE;
+    default_weapon.symbol = L' ';
+    return default_weapon;
+}
+
+// Add a weapon to the inventory
+void add_weapon(Inventory* inventory, WeaponType type) {
+    if (type <= WEAPON_NONE || type >= WEAPON_COUNT) return;
+    inventory->weapon_counts[type]++;
+}
+
+// Display weapons in the inventory
+void display_weapons(Inventory* inventory) {
+    clear();
+    mvprintw(0, 0, "Weapons Inventory:");
+    int line = 2;
+    
+    for (int i = WEAPON_MACE; i < WEAPON_COUNT; i++) {
+        Weapon weapon = get_weapon_by_type((WeaponType)i);
+        mvprintw(line++, 0, "%lc %s: %d", weapon.symbol,
+                 (i == WEAPON_MACE) ? "Mace" :
+                 (i == WEAPON_DAGGER) ? "Dagger" :
+                 (i == WEAPON_MAGIC_WAND) ? "Magic Wand" :
+                 (i == WEAPON_NORMAL_ARROW) ? "Normal Arrow" :
+                 (i == WEAPON_SWORD) ? "Sword" : "Unknown",
+                 inventory->weapon_counts[i]);
+    }
+    
+    mvprintw(line + 1, 0, "Press any key to return.");
+    refresh();
+    getch();
+}
+
+// Function to add weapons randomly on the map
+void add_weapons(struct Map* game_map) {
+    // Define the number of each weapon type to place
+    int weapons_to_place[WEAPON_COUNT] = {0, 2, 3, 1, 4, 2}; // Example counts
+    
+    for (int i = WEAPON_MACE; i < WEAPON_COUNT; i++) {
+        for (int j = 0; j < weapons_to_place[i]; j++) {
+            while (1) {
+                int x = rand() % MAP_WIDTH;
+                int y = rand() % MAP_HEIGHT;
+                
+                // Place weapons only on floor tiles
+                if (game_map->grid[y][x] == FLOOR) {
+                    Weapon weapon = get_weapon_by_type((WeaponType)i);
+                    // Since grid is char, store weapon symbol's first byte (simplification)
+                    // For proper Unicode handling, consider using wide characters
+                    game_map->grid[y][x] = (char)weapon.symbol; // Placeholder
+                    break;
+                }
+            }
+        }
+    }
+}
+
 
 void add_traps(struct Map* game_map) {
     const int TRAP_COUNT = 10; // Number of traps to add
@@ -434,85 +620,85 @@ void add_traps(struct Map* game_map) {
     }
 }
 
-void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count,
-                         int* score, int* hunger_rate,
-                         int* ancient_key_count, int* broken_key_count){
-    bool menu_open = true;
+// void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count,
+//                          int* score, int* hunger_rate,
+//                          int* ancient_key_count, int* broken_key_count){
+//     bool menu_open = true;
 
-    while (menu_open) {
-        clear();
-        mvprintw(0, 0, "Inventory Menu");
+//     while (menu_open) {
+//         clear();
+//         mvprintw(0, 0, "Inventory Menu");
 
-        // 1) Show food inventory
-        mvprintw(2, 0, "Food Inventory:");
-        for (int i = 0; i < 5; i++) {
-            if (food_inventory[i] == 1) {
-                mvprintw(4 + i, 0, "Slot %d: Food", i + 1);
-            } else {
-                mvprintw(4 + i, 0, "Slot %d: Empty", i + 1);
-            }
-        }
+//         // 1) Show food inventory
+//         mvprintw(2, 0, "Food Inventory:");
+//         for (int i = 0; i < 5; i++) {
+//             if (food_inventory[i] == 1) {
+//                 mvprintw(4 + i, 0, "Slot %d: Food", i + 1);
+//             } else {
+//                 mvprintw(4 + i, 0, "Slot %d: Empty", i + 1);
+//             }
+//         }
 
-        // 2) Show standard info
-        mvprintw(10, 0, "Gold Collected: %d", *gold_count);
-        mvprintw(11, 0, "Hunger: %d", *hunger_rate);
+//         // 2) Show standard info
+//         mvprintw(10, 0, "Gold Collected: %d", *gold_count);
+//         mvprintw(11, 0, "Hunger: %d", *hunger_rate);
 
-        // 3) Show Ancient Key info
-        //    The working keys and broken key pieces
-        mvprintw(13, 0, "Ancient Keys (working): %d", *ancient_key_count);
-        mvprintw(14, 0, "Broken Key Pieces: %d", *broken_key_count);
+//         // 3) Show Ancient Key info
+//         //    The working keys and broken key pieces
+//         mvprintw(13, 0, "Ancient Keys (working): %d", *ancient_key_count);
+//         mvprintw(14, 0, "Broken Key Pieces: %d", *broken_key_count);
 
-        // 4) Instructions
-        mvprintw(16, 0, "Press 'u' + slot number (1-5) to use food, 'c' to combine 2 broken keys, 'q' to quit.");
-        refresh();
+//         // 4) Instructions
+//         mvprintw(16, 0, "Press 'u' + slot number (1-5) to use food, 'c' to combine 2 broken keys, 'q' to quit.");
+//         refresh();
 
-        // Handle input
-        int key = getch();
-        switch (key) {
-            case 'q':
-                // Exit menu
-                menu_open = false;
-                break;
+//         // Handle input
+//         int key = getch();
+//         switch (key) {
+//             case 'q':
+//                 // Exit menu
+//                 menu_open = false;
+//                 break;
 
-            case 'u': {
-                // Using food from a slot
-                mvprintw(18, 0, "Enter slot number (1-5): ");
-                refresh();
-                int slot = getch() - '0'; // Convert char to integer
+//             case 'u': {
+//                 // Using food from a slot
+//                 mvprintw(18, 0, "Enter slot number (1-5): ");
+//                 refresh();
+//                 int slot = getch() - '0'; // Convert char to integer
 
-                if (slot >= 1 && slot <= 5 && food_inventory[slot - 1] == 1) {
-                    // Use food
-                    food_inventory[slot - 1] = 0;
-                    (*food_count)--;
-                    *hunger_rate = MAX(*hunger_rate - 20, 0);
+//                 if (slot >= 1 && slot <= 5 && food_inventory[slot - 1] == 1) {
+//                     // Use food
+//                     food_inventory[slot - 1] = 0;
+//                     (*food_count)--;
+//                     *hunger_rate = MAX(*hunger_rate - 20, 0);
 
-                    mvprintw(20, 0, "You used food from slot %d! Hunger decreased.", slot);
-                } else {
-                    mvprintw(20, 0, "Invalid slot or no food in slot!");
-                }
-                refresh();
-                getch(); // Wait for player to acknowledge
-            } break;
+//                     mvprintw(20, 0, "You used food from slot %d! Hunger decreased.", slot);
+//                 } else {
+//                     mvprintw(20, 0, "Invalid slot or no food in slot!");
+//                 }
+//                 refresh();
+//                 getch(); // Wait for player to acknowledge
+//             } break;
 
-            case 'c': {
-                // Combine two broken key pieces into one working Ancient Key
-                if (*broken_key_count >= 2) {
-                    *broken_key_count -= 2;
-                    (*ancient_key_count)++;
-                    mvprintw(18, 0, "You combined two broken key pieces into one working Ancient Key!");
-                } else {
-                    mvprintw(18, 0, "Not enough broken key pieces to combine!");
-                }
-                refresh();
-                getch(); // Wait for player
-            } break;
+//             case 'c': {
+//                 // Combine two broken key pieces into one working Ancient Key
+//                 if (*broken_key_count >= 2) {
+//                     *broken_key_count -= 2;
+//                     (*ancient_key_count)++;
+//                     mvprintw(18, 0, "You combined two broken key pieces into one working Ancient Key!");
+//                 } else {
+//                     mvprintw(18, 0, "Not enough broken key pieces to combine!");
+//                 }
+//                 refresh();
+//                 getch(); // Wait for player
+//             } break;
 
-            default:
-                // Ignore other keys
-                break;
-        }
-    }
-}
+//             default:
+//                 // Ignore other keys
+//                 break;
+//         }
+//     }
+// }
 
 void print_point(struct Point p, const char* type) {
     if (p.y < 0 || p.x < 0 || p.y >= MAP_HEIGHT || p.x >= MAP_WIDTH) return;
@@ -915,7 +1101,7 @@ void place_password_generator_in_corner(struct Map* map, struct Room* room) {
 }
 
 void move_character(struct Point* character_location, int key,
-                    struct Map* game_map, int* hitpoints){
+                    struct Map* game_map, int* hitpoints, Inventory* inventory){
     struct Point new_location = *character_location;
     switch (key) {
         case KEY_UP:    new_location.y--; break;
@@ -931,7 +1117,7 @@ void move_character(struct Point* character_location, int key,
         return; // Out of map bounds, ignore
     }
 
-    char target_tile = game_map->grid[new_location.y][new_location.x];
+    wchar_t target_tile = (wchar_t)game_map->grid[new_location.y][new_location.x];
 
     // -----------------------------------------------------------
     // 1) If it's a locked password door and we have NO password,
@@ -1041,6 +1227,31 @@ void move_character(struct Point* character_location, int key,
         // Allow movement through the revealed secret door
         *character_location = new_location;
         return;
+    }
+
+    // Handle weapon pickups
+    else {
+        WeaponType picked_weapon = WEAPON_NONE;
+        for (int i = WEAPON_MACE; i < WEAPON_COUNT; i++) {
+            Weapon weapon = get_weapon_by_type((WeaponType)i);
+            if (weapon.symbol == target_tile) {
+                picked_weapon = (WeaponType)i;
+                break;
+            }
+        }
+        
+        if (picked_weapon != WEAPON_NONE) {
+            add_weapon(inventory, picked_weapon);
+            game_map->grid[new_location.y][new_location.x] = FLOOR; // Remove weapon from map
+            mvprintw(MAP_HEIGHT + 6, 0, "You picked up a %s!", 
+                     (picked_weapon == WEAPON_MACE) ? "Mace" :
+                     (picked_weapon == WEAPON_DAGGER) ? "Dagger" :
+                     (picked_weapon == WEAPON_MAGIC_WAND) ? "Magic Wand" :
+                     (picked_weapon == WEAPON_NORMAL_ARROW) ? "Normal Arrow" :
+                     (picked_weapon == WEAPON_SWORD) ? "Sword" : "Unknown");
+            refresh();
+            getch();
+        }
     }
 
 
@@ -1542,8 +1753,9 @@ bool create_safe_filename(char* dest, size_t dest_size, const char* username, co
     return true;
 }
 
+// Saving the game
 void save_current_game(struct UserManager* manager, struct Map* game_map, 
-                      struct Point* character_location, int score, int current_level) {
+                      struct Point* character_location, int score, int current_level, Inventory* inventory) {
     if (!manager->current_user) {
         mvprintw(0, 0, "Cannot save game as guest user.");
         refresh();
@@ -1551,7 +1763,13 @@ void save_current_game(struct UserManager* manager, struct Map* game_map,
         return;
     }
 
-    char filename[256]; // Increased buffer size to prevent truncation
+    // Ensure 'saves/' directory exists
+    struct stat st = {0};
+    if (stat("saves", &st) == -1) {
+        mkdir("saves", 0700); // Permissions can be adjusted as needed
+    }
+
+    char filename[256];
     char save_name[100];
 
     clear();
@@ -1562,7 +1780,7 @@ void save_current_game(struct UserManager* manager, struct Map* game_map,
     noecho();
 
     // Truncate username and save_name if they exceed a safe length
-    char safe_username[94]; // Leave space for prefix, underscore, extension
+    char safe_username[94];
     char safe_save_name[94];
     strncpy(safe_username, manager->current_user->username, 93);
     safe_username[93] = '\0';
@@ -1591,9 +1809,11 @@ void save_current_game(struct UserManager* manager, struct Map* game_map,
         .character_location = *character_location,
         .score = score,
         .current_level = current_level,
+        .inventory = *inventory, // Save inventory
         .save_time = time(NULL)
     };
     strncpy(save.name, save_name, sizeof(save.name) - 1);
+    save.name[sizeof(save.name) - 1] = '\0'; // Ensure null-termination
 
     fwrite(&save, sizeof(struct SavedGame), 1, file);
     fclose(file);
@@ -1603,6 +1823,7 @@ void save_current_game(struct UserManager* manager, struct Map* game_map,
     getch();
 }
 
+// Loading the game
 bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game) {
     if (!manager->current_user) {
         mvprintw(0, 0, "Cannot load game as guest user.");
@@ -1648,6 +1869,7 @@ bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game) 
     fclose(file);
     return true;
 }
+
 
 void list_saved_games(struct UserManager* manager) {
     if (!manager->current_user) return;

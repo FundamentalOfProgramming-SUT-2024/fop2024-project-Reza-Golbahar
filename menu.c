@@ -106,18 +106,8 @@ void adding_new_user(struct UserManager* manager) {
             continue;
         }
 
-        // Validate password length
-        if (strlen(password) < 7) {
-            printw("\nPassword must be at least 7 characters long.\n");
-            printw("Press any key to try again...");
-            refresh();
-            getch();
-            continue;
-        }
-
-        // Using the proper password validation functions
-        if (!hasupper(password) || !haslower(password) || !hasdigit(password)) {
-            printw("\nPassword must contain at least one uppercase letter, one lowercase letter, and one number.\n");
+        // Validate password
+        if (!validate_password(password)) {
             printw("Press any key to try again...");
             refresh();
             getch();
@@ -137,10 +127,7 @@ void adding_new_user(struct UserManager* manager) {
         }
 
         // Validate email format
-        char* at = strchr(email, '@');
-        char* dot = strrchr(email, '.');
-        if (!at || !dot || at > dot || at == email || dot == at + 1 || !dot[1]) {
-            printw("\nInvalid email format. Must be xxx@yyy.zzz\n");
+        if (!validate_email(email)) {
             printw("Press any key to try again...");
             refresh();
             getch();
@@ -156,6 +143,10 @@ void adding_new_user(struct UserManager* manager) {
         strncpy(new_user->email, email, MAX_STRING_LEN - 1);
         new_user->email[MAX_STRING_LEN - 1] = '\0';
         new_user->score = 0;
+        new_user->gold = 0;
+        new_user->games_completed = 0;
+        new_user->first_game_time = time(NULL);
+        new_user->last_game_time = time(NULL);
 
         // Store in usernames array
         strncpy(manager->usernames[manager->user_count], username, MAX_STRING_LEN - 1);
@@ -184,6 +175,7 @@ void adding_new_user(struct UserManager* manager) {
                 fprintf(file, "[\n");
             } else {
                 if (content) {
+                    // Remove the closing bracket
                     content[strlen(content) - 2] = ',';  // Replace the closing bracket with a comma
                     fprintf(file, "%s", content);
                     fprintf(file, "\n");
@@ -194,8 +186,12 @@ void adding_new_user(struct UserManager* manager) {
             fprintf(file, "    \"username\": \"%s\",\n", username);
             fprintf(file, "    \"password\": \"%s\",\n", password);
             fprintf(file, "    \"email\": \"%s\",\n", email);
-            fprintf(file, "    \"score\": \"0\"\n");
-            fprintf(file, "  }\n]");
+            fprintf(file, "    \"score\": \"%d\",\n", new_user->score);
+            fprintf(file, "    \"gold\": \"%d\",\n", new_user->gold);
+            fprintf(file, "    \"games_completed\": \"%d\",\n", new_user->games_completed);
+            fprintf(file, "    \"first_game_time\": \"%ld\",\n", new_user->first_game_time);
+            fprintf(file, "    \"last_game_time\": \"%ld\"\n", new_user->last_game_time);
+            fprintf(file, "  }%s\n]", (manager->user_count < MAX_USERS - 1) ? "," : "");
             fclose(file);
         }
 
@@ -236,7 +232,6 @@ int users_menu(struct UserManager* manager) {
     return user_id;
 }
 
-
 bool entering_menu(struct UserManager* manager, int selected_index) {
     while (1) {
         clear();
@@ -258,7 +253,6 @@ bool entering_menu(struct UserManager* manager, int selected_index) {
         }
     }
 }
-
 
 void first_menu(struct UserManager* manager) {
     char input;
@@ -412,6 +406,9 @@ void pre_game_menu(struct UserManager* manager) {
                 printw("Map generated: %d rooms\n", new_map.room_count);  // Debugging line
                 struct Point start_pos = new_map.initial_position;
 
+                // Add weapons to the map
+                add_weapons(&new_map);
+
                 // Create a visibility array for the map (all tiles are initially unexplored)
                 bool visible[MAP_HEIGHT][MAP_WIDTH] = {0}; // All tiles hidden initially
                 visible[start_pos.y][start_pos.x] = 1; // Make the starting position visible
@@ -420,14 +417,16 @@ void pre_game_menu(struct UserManager* manager) {
                 print_map(&new_map, visible, start_pos);
 
                 // Start the game
-                play_game(manager, &new_map, &start_pos, 0);
+                play_game(manager, &new_map, &start_pos, 0, 1, &manager->current_user->inventory);
                 break;
             }
             case '2':
-                struct SavedGame saved;
-                if (load_saved_game(manager, &saved)) {
-                    // If successfully loaded, start the game from saved state
-                    play_game(manager, &saved.game_map, &saved.character_location, saved.score);
+                {
+                    struct SavedGame saved;
+                    if (load_saved_game(manager, &saved)) {
+                        // If successfully loaded, start the game from saved state
+                        play_game(manager, &saved.game_map, &saved.character_location, saved.score, saved.current_level, &saved.inventory);
+                    }
                 }
                 break;
             case '3':

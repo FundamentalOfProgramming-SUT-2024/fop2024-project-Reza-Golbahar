@@ -5,6 +5,8 @@
 #include "menu.h"
 #include "game.h"
 #include "users.h"
+#include "inventory.h"
+#include "weapons.h"
 
 int main() {
 
@@ -17,6 +19,9 @@ int main() {
     // Initialize random seed with current time
     srand(time(NULL));
     init_ncurses();
+
+    init_weapons();
+    Inventory inventory = { {0}, 0, 0, 0, 0, {0} }; // Initialize inventory
     
     // Create user manager
     struct UserManager* manager = create_user_manager();
