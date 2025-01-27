@@ -481,8 +481,6 @@ struct Map generate_map(struct Room* previous_room, int current_level, int max_l
     return map;
 }
 
-
-
 void place_secret_doors(struct Map* map) {
     for (int i = 0; i < map->room_count; i++) {
         struct Room* room = &map->rooms[i];

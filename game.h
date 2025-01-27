@@ -40,7 +40,7 @@
 
 
 // -- Secret doors --
-#define SECRET_DOOR_CLOSED '-'    // Placeholder for secret doors in the grid
+#define SECRET_DOOR_CLOSED '/'    // Placeholder for secret doors in the grid
 #define SECRET_DOOR_REVEALED '?'   // Symbol to display when revealed
 
 #define DOOR_PASSWORD '@'
