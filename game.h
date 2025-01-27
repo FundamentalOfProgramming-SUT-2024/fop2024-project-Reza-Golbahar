@@ -241,7 +241,7 @@ void add_weapons(struct Map* map);
 void handle_weapon_pickup(Player* player, struct Map* map, struct Point new_location);
 void open_weapon_inventory_menu(Player* player, struct Map* map);
 const char* symbol_to_name(char symbol);
-
+Weapon create_weapon(char symbol);
 //void display_weapons_inventory(Player* player);
 void equip_weapon(Player* player, int weapon_index);
 void use_weapon(Player* player);

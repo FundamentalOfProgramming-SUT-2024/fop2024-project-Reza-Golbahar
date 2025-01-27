@@ -32,11 +32,14 @@ void initialize_player(Player* player, struct Point start_location) {
     player->hitpoints = 100;
     player->hunger_rate = 0;
     player->score = 0;
-    player->weapon_count = 0;
-    player->equipped_weapon = -1; // No weapon equipped initially
+    player->weapon_count = 1;
+    player->equipped_weapon = 0; // Equip first weapon
     player->ancient_key_count = 0;
     player->broken_key_count = 0;
     // Initialize other player attributes as needed
+
+    player->weapons[0] = create_weapon(WEAPON_MACE);
+
 }
 
 void play_game(struct UserManager* manager, struct Map* game_map, 
