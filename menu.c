@@ -24,14 +24,25 @@ bool init_ncurses(void) {
     use_default_colors();
 
     init_pair(1, COLOR_RED, COLOR_BLACK);     // Locked doors
-    init_pair(2, COLOR_GREEN, COLOR_BLACK);   // Unlocked doors
+    init_pair(2, COLOR_GREEN, COLOR_BLACK);   // Unlocked doors / Player
     init_pair(3, COLOR_YELLOW, COLOR_BLACK);  // Weapons
-    init_pair(4, COLOR_MAGENTA, COLOR_BLACK); // Traps
+    init_pair(4, COLOR_RED, COLOR_BLACK);     // Traps
     init_pair(5, COLOR_YELLOW, COLOR_BLACK);  // Warning messages
-    init_pair(6, COLOR_CYAN, COLOR_BLACK);    // Other
+    init_pair(6, COLOR_CYAN, COLOR_BLACK);    // Enchant Room
     init_pair(7, COLOR_RED, COLOR_BLACK);     // Final fail messages
-    init_pair(8, COLOR_YELLOW, COLOR_BLACK);  // Ancient Keys
+    init_pair(8, COLOR_MAGENTA, COLOR_BLACK); // Ancient Key
     init_pair(9, COLOR_BLUE, COLOR_BLACK);    // Secret Doors
+
+    // Initialize color pairs for room themes
+    init_pair(COLOR_PAIR_ROOM_NORMAL,    COLOR_WHITE,  COLOR_BLACK); // Normal Rooms
+    init_pair(COLOR_PAIR_ROOM_ENCHANT,   COLOR_CYAN,   COLOR_BLACK); // Enchant Rooms
+    init_pair(COLOR_PAIR_ROOM_TREASURE,  COLOR_YELLOW, COLOR_BLACK); // Treasure Rooms
+
+    // Initialize color pairs for spells
+    init_pair(COLOR_PAIR_HEALTH,  COLOR_MAGENTA, COLOR_BLACK); // Health Spell
+    init_pair(COLOR_PAIR_SPEED,   COLOR_CYAN,     COLOR_BLACK); // Speed Spell
+    init_pair(COLOR_PAIR_DAMAGE,  COLOR_RED,      COLOR_BLACK); // Damage Spell
+
 
 
     return true;
@@ -408,7 +419,7 @@ void pre_game_menu(struct UserManager* manager) {
         switch (choice) {
             case '1': {
                 // Generate the map
-                struct Map new_map = generate_map(NULL);
+                struct Map new_map = generate_map(NULL,1 ,4);
                 printw("Map generated: %d rooms\n", new_map.room_count);  // Debugging line
                 struct Point start_pos = new_map.initial_position;
 

@@ -44,12 +44,12 @@ void initialize_player(Player* player, struct Point start_location) {
 
 void play_game(struct UserManager* manager, struct Map* game_map, 
                struct Point* character_location, int initial_score) {
-    int current_level = 1;  // Start at level 1
+    const int max_level = 4;  // Define maximum levels
+    int current_level = 1;    // Start at level 1
     bool game_running = true;
     int score = initial_score;
 
-    bool show_map = false;  // Flag to track map visibility
-
+    bool show_map = false;
 
     // Initialize player attributes
     int hitpoints = 100;            // Initial hitpoints
@@ -150,13 +150,12 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                 move_character(&player, key, game_map, &hitpoints);
                 *character_location = player.location; // Synchronize positions
 
-
                 // Check the tile the player moves onto
                 char tile = game_map->grid[character_location->y][character_location->x];
 
                 if (tile == STAIRS) {
                     // Handle level up logic
-                    if (current_level < 4) {
+                    if (current_level < max_level) {
                         current_level++;
                         struct Room* current_room = NULL;
 
@@ -168,8 +167,8 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                             }
                         }
 
-                        // Generate the next map
-                        struct Map new_map = generate_map(current_room);
+                        // Generate the next map with current_level and max_level
+                        struct Map new_map = generate_map(current_room, current_level, max_level);
                         *game_map = new_map;
                         *character_location = new_map.initial_position;
 
@@ -177,6 +176,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                         refresh();
                         getch();
                     } else {
+                        // Final level completion (Treasure Room reached)
                         mvprintw(MAP_HEIGHT + 3, 0, "Congratulations! You've completed all levels.");
                         refresh();
                         getch();
@@ -250,6 +250,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
     }
 }
 
+
 void print_full_map(struct Map* game_map, struct Point* character_location) {
     for (int y = 0; y < MAP_HEIGHT; y++) {
         for (int x = 0; x < MAP_WIDTH; x++) {
@@ -257,114 +258,167 @@ void print_full_map(struct Map* game_map, struct Point* character_location) {
 
             // Draw the player
             if (character_location->x == x && character_location->y == y) {
+                attron(COLOR_PAIR(2)); // Example: Player color
                 mvaddch(y, x, PLAYER_CHAR);
+                attroff(COLOR_PAIR(2));
                 continue;
             }
 
-            // Apply color and print based on tile type
-            if (tile == DOOR_PASSWORD) {
-                Room* door_room = find_room_by_position(game_map, x, y);
-                if (door_room && door_room->password_unlocked) {
-                    // Green for unlocked door
-                    attron(COLOR_PAIR(2));
-                    mvaddch(y, x, '@');
-                    attroff(COLOR_PAIR(2));
-                } else {
-                    // Red for locked door
-                    attron(COLOR_PAIR(1));
-                    mvaddch(y, x, '@');
-                    attroff(COLOR_PAIR(1));
+            // Determine room theme
+            RoomTheme room_theme = THEME_NORMAL; // Default
+            for (int i = 0; i < game_map->room_count; i++) {
+                if (isPointInRoom(&(struct Point){x, y}, &game_map->rooms[i])) {
+                    room_theme = game_map->rooms[i].theme;
+                    break;
                 }
             }
-            else if (tile == TRAP_SYMBOL) {
-                // Red for triggered traps
-                attron(COLOR_PAIR(4));
-                mvaddch(y, x, tile);
-                attroff(COLOR_PAIR(4));
+
+            // Apply color based on theme
+            switch(room_theme) {
+                case THEME_NORMAL:
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_NORMAL));
+                    break;
+                case THEME_ENCHANT:
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_ENCHANT));
+                    break;
+                case THEME_TREASURE:
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE));
+                    break;
+                default:
+                    // Default color
+                    break;
             }
-            else if (tile == ANCIENT_KEY) {
-                // Golden yellow for Ancient Key
-                attron(COLOR_PAIR(8));
-                mvaddstr(y, x, "▲");  // Unicode symbol
-                attroff(COLOR_PAIR(8));
+
+            // Apply color and print based on tile type
+            switch(tile) {
+                case TREASURE_CHEST:
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE)); // Use Treasure Room color
+                    mvaddch(y, x, TREASURE_CHEST);
+                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE));
+                    break;
+                    
+
+                case DOOR_PASSWORD:
+                    {
+                        Room* door_room = find_room_by_position(game_map, x, y);
+                        if (door_room && door_room->password_unlocked) {
+                            // Green for unlocked door
+                            attron(COLOR_PAIR(2));
+                            mvaddch(y, x, '@');
+                            attroff(COLOR_PAIR(2));
+                        } else {
+                            // Red for locked door
+                            attron(COLOR_PAIR(1));
+                            mvaddch(y, x, '@');
+                            attroff(COLOR_PAIR(1));
+                        }
+                    }
+                    break;
+
+                case TRAP_SYMBOL:
+                    // Red for triggered traps
+                    attron(COLOR_PAIR(4));
+                    mvaddch(y, x, tile);
+                    attroff(COLOR_PAIR(4));
+                    break;
+
+                case ANCIENT_KEY:
+                    // Golden yellow for Ancient Key
+                    attron(COLOR_PAIR(8));
+                    mvaddstr(y, x, "▲");  // Unicode symbol
+                    attroff(COLOR_PAIR(8));
+                    break;
+
+                case SECRET_DOOR_CLOSED:
+                    // Print as wall
+                    mvaddch(y, x, WALL_HORIZONTAL);
+                    break;
+
+                case SECRET_DOOR_REVEALED:
+                    // Print as '?', with distinct color
+                    attron(COLOR_PAIR(9));
+                    mvaddch(y, x, '?');
+                    attroff(COLOR_PAIR(9));
+                    break;
+
+                case WEAPON_MACE:
+                case WEAPON_DAGGER:
+                case WEAPON_MAGIC_WAND:
+                case WEAPON_ARROW:
+                case WEAPON_SWORD:
+                    // Color weapons in yellow
+                    attron(COLOR_PAIR(3));
+                    mvaddch(y, x, tile);
+                    attroff(COLOR_PAIR(3));
+                    break;
+
+                // Handle spells with colors
+                case SPELL_HEALTH:
+                    attron(COLOR_PAIR(COLOR_PAIR_HEALTH));
+                    mvaddch(y, x, SPELL_HEALTH);
+                    attroff(COLOR_PAIR(COLOR_PAIR_HEALTH));
+                    break;
+                case SPELL_SPEED:
+                    attron(COLOR_PAIR(COLOR_PAIR_SPEED));
+                    mvaddch(y, x, SPELL_SPEED);
+                    attroff(COLOR_PAIR(COLOR_PAIR_SPEED));
+                    break;
+                case SPELL_DAMAGE:
+                    attron(COLOR_PAIR(COLOR_PAIR_DAMAGE));
+                    mvaddch(y, x, SPELL_DAMAGE);
+                    attroff(COLOR_PAIR(COLOR_PAIR_DAMAGE));
+                    break;
+
+                // [Handle other tile types...]
+
+                default:
+                    // Normal tile printing with room theme color
+                    mvaddch(y, x, tile);
+                    break;
             }
-            else if (tile == SECRET_DOOR_CLOSED) {
-                // Print as horizontal wall
-                mvaddch(y, x, WALL_HORIZONTAL);
-            }
-            else if (tile == SECRET_DOOR_REVEALED) {
-                // Print as '?', with distinct color
-                attron(COLOR_PAIR(9));
-                mvaddch(y, x, '?');
-                attroff(COLOR_PAIR(9));
-            }
-            else {
-                // Normal tile printing with default color
-                mvaddch(y, x, tile);
+
+            // Turn off room theme color
+            switch(room_theme) {
+                case THEME_NORMAL:
+                case THEME_ENCHANT:
+                case THEME_TREASURE:
+                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_NORMAL));
+                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_ENCHANT));
+                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE));
+                    break;
+                default:
+                    // Default color
+                    break;
             }
         }
     }
-
-    // Optionally, display a message indicating that the full map is being shown
-    mvprintw(MAP_HEIGHT + 7, 0, "Full map displayed. Press 'm' to hide.");
 }
 
-struct Map generate_map(struct Room* previous_room) {
+
+struct Map generate_map(struct Room* previous_room, int current_level, int max_level) {
     struct Map map;
     init_map(&map);
 
-    // Check if this is the first map or a new level
+    // Determine the number of rooms based on the level or other criteria
+    int num_rooms = MIN_ROOM_COUNT + rand() % (MAX_ROOMS - MIN_ROOM_COUNT + 1);
+    
+    // If there's a previous room, retain it (e.g., the room with stairs)
     if (previous_room != NULL) {
-        // Copy the previous room dimensions and location
-        struct Room new_room = {
-            .left_wall = previous_room->left_wall,
-            .right_wall = previous_room->right_wall,
-            .top_wall = previous_room->top_wall,
-            .bottom_wall = previous_room->bottom_wall,
-            .width = previous_room->width,
-            .height = previous_room->height,
-            .has_password_door = false,
-            .password_unlocked   = false,
-            .password_active     = false,
-            .password_gen_time   = 0,
-            .door_code[0]        = '\0', // empty string initially
-            .door_count = 0,
-            .has_stairs = true,
-            .visited = false
-        };
-
-        // Place the preserved room in the new map
-        place_room(&map, &new_room);
-
-        if (rand() % 100 < 30) { // 30% chance each room has a generator
-            for (int i = 0; i < map.room_count; i++) {
-                place_password_generator_in_corner(&map, &map.rooms[i]);
-            }
-        }
-
-        // Set stairs in the same relative position
-        int stairs_x = new_room.left_wall + (previous_room->width / 2);
-        int stairs_y = new_room.top_wall + (previous_room->height / 2);
-        map.grid[stairs_y][stairs_x] = STAIRS;
-
-        // Save stairs location and initial player position
-        map.stairs_location = (struct Point){stairs_x, stairs_y};
-        map.initial_position = map.stairs_location;
-
-        // Add the preserved room to the map's room list
+        // Copy previous room details
+        struct Room new_room = *previous_room;
         map.rooms[map.room_count++] = new_room;
+        place_room(&map, &new_room);
     }
 
     // Generate additional rooms
-    int num_rooms = MIN_ROOMS + rand() % (MAX_ROOMS - MIN_ROOMS + 1);
     for (int i = (previous_room ? 1 : 0); i < num_rooms; i++) {  // Skip first room if previous_room exists
         struct Room room;
         int attempts = 0;
         bool placed = false;
 
         while (!placed && attempts < 100) {
-            room.width = MIN_ROOM_SIZE + rand() % (MAX_ROOM_SIZE - MIN_ROOM_SIZE + 1);
-            room.height = MIN_ROOM_SIZE + rand() % (MAX_ROOM_SIZE - MIN_ROOM_SIZE + 1);
+            room.width = MIN_WIDTH_OR_LENGTH + rand() % (MAX_ROOM_SIZE - MIN_WIDTH_OR_LENGTH + 1);
+            room.height = MIN_WIDTH_OR_LENGTH + rand() % (MAX_ROOM_SIZE - MIN_WIDTH_OR_LENGTH + 1);
             room.left_wall = 1 + rand() % (MAP_WIDTH - room.width - 2);
             room.top_wall = 1 + rand() % (MAP_HEIGHT - room.height - 2);
             room.right_wall = room.left_wall + room.width;
@@ -372,8 +426,25 @@ struct Map generate_map(struct Room* previous_room) {
             room.door_count = 0;
             room.has_stairs = false;
             room.visited = false;
+            room.theme = THEME_NORMAL; // Default theme
 
             if (is_valid_room_placement(&map, &room)) {
+                // Assign theme based on level
+                if (current_level == max_level && i == num_rooms - 1) {
+                    // Last room of the last level is the Treasure Room
+                    room.theme = THEME_TREASURE;
+                }
+                else {
+                    // Assign Enchant or Normal themes based on probability or other criteria
+                    int rand_num = rand() % 100;
+                    if (rand_num < 10) { // 10% chance for Enchant Room
+                        room.theme = THEME_ENCHANT;
+                    }
+                    else {
+                        room.theme = THEME_NORMAL;
+                    }
+                }
+
                 map.rooms[map.room_count++] = room;
                 place_room(&map, &room);
                 placed = true;
@@ -385,17 +456,20 @@ struct Map generate_map(struct Room* previous_room) {
     // Connect rooms with corridors
     connect_rooms_with_corridors(&map);
 
+    // Place secret doors (if applicable)
     place_secret_doors(&map);
 
-    // Spawn food, gold, and traps
+    // Spawn items and features
     add_food(&map);
     add_gold(&map);
     add_traps(&map);
     add_weapons(&map);
     add_spells(&map);
 
+    // Place the single Ancient Key
     add_ancient_key(&map);
 
+    // Place stairs (if applicable)
     place_stairs(&map);
 
     // Set initial player position for the first map
@@ -406,6 +480,8 @@ struct Map generate_map(struct Room* previous_room) {
 
     return map;
 }
+
+
 
 void place_secret_doors(struct Map* map) {
     for (int i = 0; i < map->room_count; i++) {
@@ -695,7 +771,9 @@ void print_map(struct Map* game_map,
 
             // Draw the player
             if (character_location.x == x && character_location.y == y) {
+                attron(COLOR_PAIR(2)); // Example: Player color
                 mvaddch(y, x, PLAYER_CHAR);
+                attroff(COLOR_PAIR(2));
                 continue;
             }
 
@@ -706,10 +784,12 @@ void print_map(struct Map* game_map,
             } else {
                 // Check if it's in a visited room or discovered
                 bool is_in_visited_room = false;
+                RoomTheme room_theme = THEME_UNKNOWN;
                 for (int i = 0; i < game_map->room_count; i++) {
                     if (game_map->rooms[i].visited &&
                         isPointInRoom(&(struct Point){x, y}, &game_map->rooms[i])) {
                         is_in_visited_room = true;
+                        room_theme = game_map->rooms[i].theme;
                         break;
                     }
                 }
@@ -724,72 +804,130 @@ void print_map(struct Map* game_map,
                 continue;
             }
 
-            // Apply color and print based on tile type
-            if (tile == DOOR_PASSWORD) {
-                Room* door_room = find_room_by_position(game_map, x, y);
-                if (door_room && door_room->password_unlocked) {
-                    // Green for unlocked door
-                    attron(COLOR_PAIR(2));
-                    mvaddch(y, x, '@');
-                    attroff(COLOR_PAIR(2));
-                } else {
-                    // Red for locked door
-                    attron(COLOR_PAIR(1));
-                    mvaddch(y, x, '@');
-                    attroff(COLOR_PAIR(1));
+            // Determine room theme
+            RoomTheme room_theme = THEME_NORMAL; // Default
+            for (int i = 0; i < game_map->room_count; i++) {
+                if (isPointInRoom(&(struct Point){x, y}, &game_map->rooms[i])) {
+                    room_theme = game_map->rooms[i].theme;
+                    break;
                 }
             }
-            else if (tile == TRAP_SYMBOL) {
-                // Red for triggered traps
-                attron(COLOR_PAIR(4));
-                mvaddch(y, x, tile);
-                attroff(COLOR_PAIR(4));
+
+            // Apply color based on theme
+            switch(room_theme) {
+                case THEME_NORMAL:
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_NORMAL));
+                    break;
+                case THEME_ENCHANT:
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_ENCHANT));
+                    break;
+                case THEME_TREASURE:
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE));
+                    break;
+                default:
+                    // Default color
+                    break;
             }
-            else if (tile == ANCIENT_KEY) {
-                // Golden yellow for Ancient Key
-                attron(COLOR_PAIR(8));               // Use color pair 8 for golden yellow
-                mvaddstr(y, x, "▲");                  // Print the Unicode symbol
-                attroff(COLOR_PAIR(8));
-            }
-            else if (tile == SECRET_DOOR_CLOSED) {
-                // Print as wall (e.g., '-')
-                mvaddch(y, x, WALL_HORIZONTAL);        // Or WALL_VERTICAL based on your wall type
-            }
-            else if (tile == SECRET_DOOR_REVEALED) {
-                // Print as '?', with distinct color
-                attron(COLOR_PAIR(9));                // Use color pair 9 for secret doors
-                mvaddch(y, x, '?');
-                attroff(COLOR_PAIR(9));
-            }
-            else if (tile == WEAPON_MACE || tile == WEAPON_DAGGER || tile == WEAPON_MAGIC_WAND ||
-                     tile == WEAPON_ARROW || tile == WEAPON_SWORD) {
-                // Color weapons in yellow
-                attron(COLOR_PAIR(3));
-                mvaddch(y, x, tile);
-                attroff(COLOR_PAIR(3));
-            }
+
             // Apply color and print based on tile type
             switch(tile) {
+                case TREASURE_CHEST:
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE)); // Use Treasure Room color
+                    mvaddch(y, x, TREASURE_CHEST);
+                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE));
+                    break;
+
+                
+                case DOOR_PASSWORD:
+                    {
+                        Room* door_room = find_room_by_position(game_map, x, y);
+                        if (door_room && door_room->password_unlocked) {
+                            // Green for unlocked door
+                            attron(COLOR_PAIR(2));
+                            mvaddch(y, x, '@');
+                            attroff(COLOR_PAIR(2));
+                        } else {
+                            // Red for locked door
+                            attron(COLOR_PAIR(1));
+                            mvaddch(y, x, '@');
+                            attroff(COLOR_PAIR(1));
+                        }
+                    }
+                    break;
+
+                case TRAP_SYMBOL:
+                    // Red for triggered traps
+                    attron(COLOR_PAIR(4));
+                    mvaddch(y, x, tile);
+                    attroff(COLOR_PAIR(4));
+                    break;
+
+                case ANCIENT_KEY:
+                    // Golden yellow for Ancient Key
+                    attron(COLOR_PAIR(8));
+                    mvaddstr(y, x, "▲");  // Unicode symbol
+                    attroff(COLOR_PAIR(8));
+                    break;
+
+                case SECRET_DOOR_CLOSED:
+                    // Print as wall
+                    mvaddch(y, x, WALL_HORIZONTAL);
+                    break;
+
+                case SECRET_DOOR_REVEALED:
+                    // Print as '?', with distinct color
+                    attron(COLOR_PAIR(9));
+                    mvaddch(y, x, '?');
+                    attroff(COLOR_PAIR(9));
+                    break;
+
+                case WEAPON_MACE:
+                case WEAPON_DAGGER:
+                case WEAPON_MAGIC_WAND:
+                case WEAPON_ARROW:
+                case WEAPON_SWORD:
+                    // Color weapons in yellow
+                    attron(COLOR_PAIR(3));
+                    mvaddch(y, x, tile);
+                    attroff(COLOR_PAIR(3));
+                    break;
+
+                // Handle spells with colors
                 case SPELL_HEALTH:
-                    //attron(COLOR_PAIR(10)); // Define a new color pair for Health Spells
+                    attron(COLOR_PAIR(COLOR_PAIR_HEALTH));
                     mvaddch(y, x, SPELL_HEALTH);
-                    //attroff(COLOR_PAIR(10));
+                    attroff(COLOR_PAIR(COLOR_PAIR_HEALTH));
                     break;
                 case SPELL_SPEED:
-                    //attron(COLOR_PAIR(11)); // Define a new color pair for Speed Spells
+                    attron(COLOR_PAIR(COLOR_PAIR_SPEED));
                     mvaddch(y, x, SPELL_SPEED);
-                    //attroff(COLOR_PAIR(11));
+                    attroff(COLOR_PAIR(COLOR_PAIR_SPEED));
                     break;
                 case SPELL_DAMAGE:
-                    //attron(COLOR_PAIR(12)); // Define a new color pair for Damage Spells
+                    attron(COLOR_PAIR(COLOR_PAIR_DAMAGE));
                     mvaddch(y, x, SPELL_DAMAGE);
-                    //attroff(COLOR_PAIR(12));
+                    attroff(COLOR_PAIR(COLOR_PAIR_DAMAGE));
                     break;
+
                 // [Handle other tile types...]
 
                 default:
-                    // Normal tile printing with default color
+                    // Normal tile printing with room theme color
                     mvaddch(y, x, tile);
+                    break;
+            }
+
+            // Turn off room theme color
+            switch(room_theme) {
+                case THEME_NORMAL:
+                case THEME_ENCHANT:
+                case THEME_TREASURE:
+                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_NORMAL));
+                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_ENCHANT));
+                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE));
+                    break;
+                default:
+                    // Default color
                     break;
             }
         }
@@ -805,7 +943,7 @@ Room* find_room_by_position(struct Map* map, int x, int y) {
             return rm;
         }
     }
-    return NULL;  // not in any room
+    return NULL;  // Not in any room
 }
 
 void connect_rooms_with_corridors(struct Map* map) {
@@ -1440,7 +1578,7 @@ void place_room(struct Map* map, struct Room* room) {
             map->grid[y][x] = FLOOR;
         }
     }
-    
+
     // Place walls
     for (int x = room->left_wall; x <= room->right_wall; x++) {
         map->grid[room->top_wall][x] = WALL_HORIZONTAL;
@@ -1450,11 +1588,20 @@ void place_room(struct Map* map, struct Room* room) {
         map->grid[y][room->left_wall] = WALL_VERTICAL;
         map->grid[y][room->right_wall] = WALL_VERTICAL;
     }
-    
+
     // Place pillars and windows
     place_pillars(map, room);
     place_windows(map, room);
+
+    // Additional rendering for Treasure Room
+    if (room->theme == THEME_TREASURE) {
+        // Example: Place a treasure chest symbol at the center
+        int center_x = (room->left_wall + room->right_wall) / 2;
+        int center_y = (room->top_wall + room->bottom_wall) / 2;
+        map->grid[center_y][center_x] = TREASURE_CHEST; // Define TREASURE_CHEST, e.g., '#'
+    }
 }
+
 
 void update_visibility(struct Map* game_map, struct Point* player_pos, bool visible[MAP_HEIGHT][MAP_WIDTH]) {
     const int CORRIDOR_SIGHT = 5; // Sight range in corridors

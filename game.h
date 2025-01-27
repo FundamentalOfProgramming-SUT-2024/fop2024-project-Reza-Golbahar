@@ -8,6 +8,11 @@
 #include "users.h"
 #include "menu.h"
 
+// Probability thresholds (adjust as needed)
+#define PROB_TREASURE_ROOM 20 // 20% chance
+#define PROB_ENCHANT_ROOM  10 // 10% chance
+
+
 #define MAX_ROOM_CONNECTION_DISTANCE 20  // Maximum allowable distance between room centers
 
 // Map symbols
@@ -24,6 +29,14 @@
 #define FOOD                'T'
 #define TRAP_SYMBOL         '^'
 #define PLAYER_CHAR         'P'
+
+#define COLOR_PAIR_ROOM_NORMAL    13
+#define COLOR_PAIR_ROOM_ENCHANT   14
+#define COLOR_PAIR_ROOM_TREASURE  15
+
+#define COLOR_PAIR_DAMAGE 10
+#define COLOR_PAIR_SPEED 11
+#define COLOR_PAIR_HEALTH 12
 
 
 // -- Secret doors --
@@ -47,6 +60,8 @@
 #define SPELL_HEALTH 'H'
 #define SPELL_SPEED  'S'
 #define SPELL_DAMAGE 'D'
+
+#define TREASURE_CHEST 'T'
 
 // Maximum number of weapons a player can carry
 #define MAX_WEAPONS         10
@@ -83,6 +98,18 @@ typedef struct Trap {
     bool triggered;        // Whether the trap has been triggered
 } Trap;
 
+// Define Room Themes
+typedef enum {
+    THEME_NORMAL,
+    THEME_TREASURE,
+    THEME_ENCHANT,
+    THEME_UNKNOWN // For future extensions
+} RoomTheme;
+
+typedef struct Door {
+    int x;
+    int y;
+} Door;
 
 typedef struct Room {
     int x, y;
@@ -92,7 +119,6 @@ typedef struct Room {
     int bottom_wall;  // Previously down_wall
     int width;
     int height;
-    struct Point doors[MAX_DOORS];
     int door_count;
     bool has_stairs;
     bool visited;
@@ -103,6 +129,8 @@ typedef struct Room {
     bool password_active;           // Is there a valid password now?
     time_t password_gen_time;       // When the password was generated
     char door_code[6];            // 4-digit (zero-padded) code, plus 1 for the null terminator
+    RoomTheme theme; // New field for room theme    
+    Door doors[MAX_DOORS]; // Assuming a Door structure exists
 } Room;
 
 struct Map {
@@ -259,7 +287,7 @@ void update_password_display();
 
 // Map display
 void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct Point character_location);
-struct Map generate_map(struct Room* previous_room);
+struct Map generate_map(struct Room* previous_room, int current_level, int max_level) ;
 
 // Function declarations for weapons
 void add_weapons(struct Map* map);
