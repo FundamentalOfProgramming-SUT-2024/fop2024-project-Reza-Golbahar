@@ -21,6 +21,7 @@ struct User {
     int games_completed;
     time_t first_game_time;
     time_t last_game_time;
+    int current_level;
     Inventory inventory; // Inventory included here
 };
 

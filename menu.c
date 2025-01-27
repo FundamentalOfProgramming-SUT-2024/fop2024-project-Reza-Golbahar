@@ -4,6 +4,8 @@
 #include "menu.h"
 #include "users.h"
 #include "game.h"
+#include "inventory.h"
+#include "weapons.h"
 
 
 bool init_ncurses(void) {
@@ -147,6 +149,8 @@ void adding_new_user(struct UserManager* manager) {
         new_user->games_completed = 0;
         new_user->first_game_time = time(NULL);
         new_user->last_game_time = time(NULL);
+        new_user->current_level = 1; // Initialize current_level
+
 
         // Store in usernames array
         strncpy(manager->usernames[manager->user_count], username, MAX_STRING_LEN - 1);
@@ -235,19 +239,19 @@ int users_menu(struct UserManager* manager) {
 bool entering_menu(struct UserManager* manager, int selected_index) {
     while (1) {
         clear();
-        printw("Enter the password for the chosen username");
+        mvprintw(0, 0, "Enter the password for the chosen username");
         char password[MAX_STRING_LEN];
         noecho();
-        scanw("%s", password);
+        mvscanw(2, 0, "%s", password);
         echo();
 
         if (authenticate_user(manager, selected_index - 1, password)) {
-            printw("Password is correct.\n");
+            mvprintw(4, 0, "Password is correct.\n");
             refresh();
             getch();
             return true;
         } else {
-            printw("Password is incorrect. Please try again.\n");
+            mvprintw(4, 0, "Password is incorrect. Please try again.\n");
             refresh();
             getch();
         }
@@ -356,26 +360,27 @@ void settings(struct UserManager* manager) {
 }
 
 
-void login_menu(struct UserManager* manager) {
+void login_menu(struct UserManager* manager, Inventory* inventory) {
     clear();
-    int selected_index = users_menu(manager);
+    int selected_index = users_menu(manager); // Assuming users_menu is implemented
     if (selected_index > 0) {
         if (entering_menu(manager, selected_index)) {
-            pre_game_menu(manager);
+            pre_game_menu(manager, inventory); // Pass Inventory pointer
         }
     }
 }
 
-void register_menu(struct UserManager* manager) {
+void register_menu(struct UserManager* manager, Inventory* inventory) {
     clear();
     adding_new_user(manager);
     if (manager->user_count > 0) {
         manager->current_user = &manager->users[manager->user_count - 1];
-        pre_game_menu(manager);
+        pre_game_menu(manager, inventory); // Pass Inventory pointer
     }
 }
 
-void pre_game_menu(struct UserManager* manager) {
+
+void pre_game_menu(struct UserManager* manager, Inventory* inventory) {
     bool running = true;
 
     while (running) {
@@ -393,47 +398,43 @@ void pre_game_menu(struct UserManager* manager) {
             mvprintw(8, 0, "Playing as Guest");
         }
         
-        mvprintw(9, 0, "Current Date and Time (UTC): 2025-01-04 20:00:58");
+        mvprintw(9, 0, "Current Date and Time (UTC): %s", "2025-01-04 20:00:58"); // Replace with actual time if needed
         mvprintw(11, 0, "Choose an option (1-5): ");
         refresh();
 
         int choice = getch();
-        
+
         switch (choice) {
             case '1': {
                 // Generate the map
                 struct Map new_map = generate_map(NULL);
-                printw("Map generated: %d rooms\n", new_map.room_count);  // Debugging line
                 struct Point start_pos = new_map.initial_position;
 
                 // Add weapons to the map
                 add_weapons(&new_map);
 
-                // Create a visibility array for the map (all tiles are initially unexplored)
-                bool visible[MAP_HEIGHT][MAP_WIDTH] = {0}; // All tiles hidden initially
-                visible[start_pos.y][start_pos.x] = 1; // Make the starting position visible
-
-                // Print the map with the starting location and visibility
-                print_map(&new_map, visible, start_pos);
-
                 // Start the game
-                play_game(manager, &new_map, &start_pos, 0, 1, &manager->current_user->inventory);
-                break;
-            }
-            case '2':
-                {
-                    struct SavedGame saved;
-                    if (load_saved_game(manager, &saved)) {
-                        // If successfully loaded, start the game from saved state
-                        play_game(manager, &saved.game_map, &saved.character_location, saved.score, saved.current_level, &saved.inventory);
-                    }
+                if (manager->current_user) {
+                    play_game(manager, &new_map, &start_pos, manager->current_user->score, manager->current_user->current_level, &manager->current_user->inventory);
+                } else {
+                    // For guest users, use the passed inventory
+                    play_game(manager, &new_map, &start_pos, 0, 1, inventory);
                 }
                 break;
+            }
+            case '2': {
+                struct SavedGame saved;
+                if (load_saved_game(manager, &saved)) {
+                    // Start the game from saved state
+                    play_game(manager, &saved.game_map, &saved.character_location, saved.score, saved.current_level, &saved.inventory);
+                }
+                break;
+            }
             case '3':
-                print_scoreboard(manager);
+                print_scoreboard(manager); // Assuming print_scoreboard is implemented
                 break;
             case '4':
-                settings(manager);
+                settings(manager); // Assuming settings is implemented
                 break;
             case '5':
                 running = false;
@@ -446,3 +447,4 @@ void pre_game_menu(struct UserManager* manager) {
         }
     }
 }
+

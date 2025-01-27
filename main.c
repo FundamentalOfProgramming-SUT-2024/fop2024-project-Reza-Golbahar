@@ -48,15 +48,15 @@ int main() {
 
         switch (choice) {
             case '1':
-                login_menu(manager);
+                login_menu(manager, &inventory); // Pass Inventory pointer
                 break;
             case '2':
-                register_menu(manager);
+                register_menu(manager, &inventory); // Pass Inventory pointer
                 break;
             case '3':
                 // Play as guest
                 manager->current_user = NULL;
-                pre_game_menu(manager);
+                pre_game_menu(manager, &inventory); // Pass the inventory pointer
                 break;
             case '4':
                 running = false;

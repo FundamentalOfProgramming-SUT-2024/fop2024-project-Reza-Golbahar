@@ -6,6 +6,8 @@
 #include <dirent.h>
 #include "game.h"
 #include "users.h"
+#include "inventory.h"
+#include "weapons.h"
 
 bool hasPassword = false;  // The single definition
 
@@ -21,9 +23,6 @@ bool hasPassword = false;  // The single definition
 #define MAP_HEIGHT 24
 
 
-//For Ancient Keys
-int ancient_key_count = 0;
-int broken_key_count = 0;
 Weapon weapons_list[WEAPON_COUNT];
 
 
@@ -572,7 +571,7 @@ void display_weapons(Inventory* inventory) {
 void add_weapons(struct Map* game_map) {
     // Define the number of each weapon type to place
     int weapons_to_place[WEAPON_COUNT] = {0, 2, 3, 1, 4, 2}; // Example counts
-    
+
     for (int i = WEAPON_MACE; i < WEAPON_COUNT; i++) {
         for (int j = 0; j < weapons_to_place[i]; j++) {
             while (1) {
@@ -582,16 +581,13 @@ void add_weapons(struct Map* game_map) {
                 // Place weapons only on floor tiles
                 if (game_map->grid[y][x] == FLOOR) {
                     Weapon weapon = get_weapon_by_type((WeaponType)i);
-                    // Since grid is char, store weapon symbol's first byte (simplification)
-                    // For proper Unicode handling, consider using wide characters
-                    game_map->grid[y][x] = (char)weapon.symbol; // Placeholder
+                    game_map->grid[y][x] = weapon.symbol; // Assign wchar_t directly
                     break;
                 }
             }
         }
     }
 }
-
 
 void add_traps(struct Map* game_map) {
     const int TRAP_COUNT = 10; // Number of traps to add
@@ -1156,7 +1152,7 @@ void move_character(struct Point* character_location, int key,
             *character_location = new_location;
         } else {
             // if the user has at least 1 key, let them choose
-            bool has_key = (ancient_key_count > 0);
+            bool has_key = (inventory->ancient_key_count > 0);
             bool used_key = false;
 
             if (has_key) {
@@ -1175,12 +1171,12 @@ void move_character(struct Point* character_location, int key,
                 // 10% break chance
                 if ((rand() % 100) < 10) {
                     // Key breaks => lose 1 key, gain 1 broken piece
-                    ancient_key_count--;
-                    broken_key_count++;
+                    inventory->ancient_key_count--;
+                    inventory->broken_key_count++;
                     mvprintw(4, 2, "The Ancient Key broke!");
                 } else {
                     // Key successfully used => remove 1 key
-                    ancient_key_count--;
+                    inventory->ancient_key_count--;
                     door_room->password_unlocked = true; 
                     mvprintw(4, 2, "Door unlocked with the Ancient Key!");
                     // Player can pass through now
@@ -1204,7 +1200,7 @@ void move_character(struct Point* character_location, int key,
     else if (target_tile == ANCIENT_KEY) {
         // Pick up the Ancient Key
         game_map->grid[new_location.y][new_location.x] = FLOOR; // Remove the key from the map
-        ancient_key_count++;
+        inventory->ancient_key_count++;
         mvprintw(12, 80, "You picked up an");
         mvprintw(13, 80, "Ancient Key!");
         refresh();

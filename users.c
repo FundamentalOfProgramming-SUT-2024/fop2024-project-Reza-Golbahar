@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "users.h"
+#include "inventory.h"
+#include "weapons.h"
 
 // File handling functions
 void handle_file_error(const char* operation) {
