@@ -5,8 +5,6 @@
 #include "menu.h"
 #include "game.h"
 #include "users.h"
-#include "inventory.h"
-#include "weapons.h"
 
 int main() {
 
@@ -19,9 +17,6 @@ int main() {
     // Initialize random seed with current time
     srand(time(NULL));
     init_ncurses();
-
-    init_weapons();
-    Inventory inventory = { {0}, 0, 0, 0, 0, {0} }; // Initialize inventory
     
     // Create user manager
     struct UserManager* manager = create_user_manager();
@@ -48,15 +43,15 @@ int main() {
 
         switch (choice) {
             case '1':
-                login_menu(manager, &inventory); // Pass Inventory pointer
+                login_menu(manager);
                 break;
             case '2':
-                register_menu(manager, &inventory); // Pass Inventory pointer
+                register_menu(manager);
                 break;
             case '3':
                 // Play as guest
                 manager->current_user = NULL;
-                pre_game_menu(manager, &inventory); // Pass the inventory pointer
+                pre_game_menu(manager);
                 break;
             case '4':
                 running = false;

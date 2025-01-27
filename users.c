@@ -2,8 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "users.h"
-#include "inventory.h"
-#include "weapons.h"
 
 // File handling functions
 void handle_file_error(const char* operation) {
@@ -67,7 +65,7 @@ bool validate_email(const char *email) {
     if (!at) return false;
     
     const char *dot = strchr(at, '.');
-    if (!dot || dot == at + 1 || !dot[1]) {
+    if (!dot || dot == at + 1 || *(dot + 1) == '\0') {
         printw("Invalid email format. Must be xxxx@yyy.zzz\n");
         return false;
     }
@@ -104,7 +102,7 @@ void load_users_from_json(struct UserManager* manager) {
         return;
     }
 
-    char line[512];
+    char line[256];
     manager->user_count = 0;
 
     while (fgets(line, sizeof(line), file)) {
@@ -117,18 +115,9 @@ void load_users_from_json(struct UserManager* manager) {
             fgets(line, sizeof(line), file);
             sscanf(line, " \"email\": \"%[^\"]\",", user->email);
             fgets(line, sizeof(line), file);
-            sscanf(line, " \"score\": \"%d\",\n", &user->score);
-            fgets(line, sizeof(line), file);
-            sscanf(line, " \"gold\": \"%d\",\n", &user->gold);
-            fgets(line, sizeof(line), file);
-            sscanf(line, " \"games_completed\": \"%d\",\n", &user->games_completed);
-            fgets(line, sizeof(line), file);
-            sscanf(line, " \"first_game_time\": \"%ld\",\n", &user->first_game_time);
-            fgets(line, sizeof(line), file);
-            sscanf(line, " \"last_game_time\": \"%ld\"\n", &user->last_game_time);
-
-            // Initialize inventory
-            memset(&user->inventory, 0, sizeof(Inventory));
+            char score_str[10];
+            sscanf(line, " \"score\": \"%[^\"]\"", score_str);
+            user->score = atoi(score_str);
 
             strncpy(manager->usernames[manager->user_count], user->username, MAX_STRING_LEN - 1);
             manager->usernames[manager->user_count][MAX_STRING_LEN - 1] = '\0';
@@ -152,16 +141,14 @@ void save_users_to_json(struct UserManager* manager) {
         fprintf(file, "    \"username\": \"%s\",\n", manager->users[i].username);
         fprintf(file, "    \"password\": \"%s\",\n", manager->users[i].password);
         fprintf(file, "    \"email\": \"%s\",\n", manager->users[i].email);
-        fprintf(file, "    \"score\": \"%d\",\n", manager->users[i].score);
-        fprintf(file, "    \"gold\": \"%d\",\n", manager->users[i].gold);
-        fprintf(file, "    \"games_completed\": \"%d\",\n", manager->users[i].games_completed);
-        fprintf(file, "    \"first_game_time\": \"%ld\",\n", manager->users[i].first_game_time);
-        fprintf(file, "    \"last_game_time\": \"%ld\"\n", manager->users[i].last_game_time);
-        fprintf(file, "  }%s\n", (i < manager->user_count - 1) ? "," : "");
+        fprintf(file, "    \"score\": \"%d\"%s\n", manager->users[i].score,
+                i < manager->user_count - 1 ? "," : "");
+        fprintf(file, "  }%s\n", i < manager->user_count - 1 ? "," : "");
     }
     fprintf(file, "]\n");
     fclose(file);
 }
+
 
 bool authenticate_user(struct UserManager* manager, int index, const char* password) {
     if (index < 0 || index >= manager->user_count) {
@@ -175,7 +162,6 @@ bool authenticate_user(struct UserManager* manager, int index, const char* passw
     return false;
 }
 
-// Function to print users (used in login)
 void print_users(struct UserManager* manager) {
     if (manager->user_count == 0) {
         printw("No users found.\n");
@@ -185,17 +171,14 @@ void print_users(struct UserManager* manager) {
     mvprintw(2, 0, "Usernames");
     mvprintw(2, 30, "Emails");
     mvprintw(2, 60, "Score");
-    mvprintw(2, 70, "Gold");
 
     for (int i = 0; i < manager->user_count; i++) {
         mvprintw(i + 3, 0, "%d-%s", i + 1, manager->users[i].username);
         mvprintw(i + 3, 30, "%s", manager->users[i].email);
         mvprintw(i + 3, 60, "%d", manager->users[i].score);
-        mvprintw(i + 3, 70, "%d", manager->users[i].gold);
     }
 }
 
-// Function to print the scoreboard
 void print_scoreboard(struct UserManager* manager) {
     if (manager->user_count == 0) {
         mvprintw(0, 0, "No users found.\n");
@@ -272,7 +255,7 @@ void print_scoreboard(struct UserManager* manager) {
                 attron(COLOR_PAIR(i + 1) | A_BOLD);
                 const char* medals[] = {"🏆", "🥈", "🥉"};
                 const char* titles[] = {"GOAT", "Legend", "Champion"};
-                mvprintw(row, 0, "%lc %d", medals[i][0], i + 1);
+                mvprintw(row, 0, "%s %d", medals[i], i + 1);
                 mvprintw(row, 70, "%s", titles[i]);
             } else {
                 // Normal ranking
@@ -317,7 +300,7 @@ void print_scoreboard(struct UserManager* manager) {
     }
 }
 
-// Function to print user profile (can be expanded as needed)
+
 void print_profile(struct UserManager* manager) {
     if (manager->current_user == NULL) {
         printw("No user is currently logged in.\n");
@@ -334,31 +317,23 @@ void print_profile(struct UserManager* manager) {
     mvprintw(3, 0, "Username: %s", manager->current_user->username);
     mvprintw(4, 0, "Email: %s", manager->current_user->email);
     mvprintw(5, 0, "Current Score: %d", manager->current_user->score);
-    mvprintw(6, 0, "Gold: %d", manager->current_user->gold);
-    mvprintw(7, 0, "Games Completed: %d", manager->current_user->games_completed);
-    mvprintw(8, 0, "First Game Played: %s", ctime(&manager->current_user->first_game_time));
-    mvprintw(9, 0, "Last Game Played: %s", ctime(&manager->current_user->last_game_time));
+    mvprintw(6, 0, "----------------------------------------");
     
-    mvprintw(11, 0, "Inventory:");
-    mvprintw(12, 2, "Food Count: %d", manager->current_user->inventory.food_count);
-    mvprintw(13, 2, "Gold Count: %d", manager->current_user->inventory.gold_count);
-    mvprintw(14, 2, "Ancient Keys: %d", manager->current_user->inventory.ancient_key_count);
-    mvprintw(15, 2, "Broken Key Pieces: %d", manager->current_user->inventory.broken_key_count);
-    
-    // Display weapons
-    mvprintw(17, 0, "Weapons:");
-    for (int i = WEAPON_MACE; i < WEAPON_COUNT; i++) {
-        Weapon weapon = get_weapon_by_type((WeaponType)i);
-        mvprintw(18 + (i - WEAPON_MACE), 2, "%lc %s: %d", weapon.symbol,
-                 (i == WEAPON_MACE) ? "Mace" :
-                 (i == WEAPON_DAGGER) ? "Dagger" :
-                 (i == WEAPON_MAGIC_WAND) ? "Magic Wand" :
-                 (i == WEAPON_NORMAL_ARROW) ? "Normal Arrow" :
-                 (i == WEAPON_SWORD) ? "Sword" : "Unknown",
-                 manager->current_user->inventory.weapon_counts[i]);
+    line_num = 7;  // Start settings from line 7
+    // Load game settings if they exist
+    FILE *settings_file = fopen("load.json", "r");
+    if (settings_file != NULL) {
+        mvprintw(line_num++, 0, "Current Settings:");
+        char settings_line[256];
+        while (fgets(settings_line, sizeof(settings_line), settings_file)) {
+            mvprintw(line_num++, 0, "%s", settings_line);
+        }
+        fclose(settings_file);
+    } else {
+        handle_file_error("open settings");
     }
 
-    mvprintw(24, 0, "Press any key to return...");
+    mvprintw(line_num + 1, 0, "Press any key to return...");
     refresh();
     getch();
 }

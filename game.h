@@ -5,10 +5,7 @@
 #include <stdint.h>
 #include <ncurses.h>
 #include <time.h>
-#include <sys/stat.h>
 #include "users.h"
-#include "inventory.h"
-#include "weapons.h"
 #include "menu.h"
 
 #define MAX_ROOM_CONNECTION_DISTANCE 20  // Maximum allowable distance between room centers
@@ -39,6 +36,15 @@
 // Just store 'K' for "Key" in the grid
 #define ANCIENT_KEY 'K' //it will be printed as ▲
 
+// Weapon symbols
+#define WEAPON_MACE         '1'
+#define WEAPON_DAGGER       '2'
+#define WEAPON_MAGIC_WAND   '3'
+#define WEAPON_ARROW        '4'
+#define WEAPON_SWORD        '5'
+
+// Maximum number of weapons a player can carry
+#define MAX_WEAPONS         10
 
 
 // Map constants
@@ -53,6 +59,10 @@
 #define MAX_DOORS           4
 #define WINDOW_CHANCE       20
 #define SIGHT_RANGE         5
+
+// Utility macros
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
+#define MAX(a,b) ((a) > (b) ? (a) : (b))
 
 #define MAX_MESSAGES        5
 #define MESSAGE_LENGTH      100
@@ -103,6 +113,35 @@ struct Map {
     struct Point initial_position;
 };
 
+// Weapon structure
+typedef struct Weapon {
+    char symbol;            // '1' to '5'
+    char name[20];          // Name of the weapon
+    int damage;             // Damage value
+    // Add more attributes as needed (e.g., durability, special effects)
+} Weapon;
+
+// Player structure update to include weapon inventory
+typedef struct Player {
+    struct Point location;
+    int hitpoints;
+    int hunger_rate;
+    int score;
+    
+    // Weapon inventory
+    Weapon weapons[MAX_WEAPONS];
+    int weapon_count;
+    
+    // Currently equipped weapon index (-1 if none)
+    int equipped_weapon;
+
+    // Key counts
+    int ancient_key_count;
+    int broken_key_count;
+    
+    // ... [other player attributes]
+} Player;
+
 
 struct GameMessage {
     char text[100];
@@ -119,7 +158,6 @@ struct SavedGame {
     struct Map game_map;
     struct Point character_location;
     int score;
-    Inventory inventory;
     int current_level;  // Track the current level
     time_t save_time;
     char name[MAX_STRING_LEN];
@@ -138,13 +176,12 @@ static bool door_unlocked = false;
 
 // Game core functions
 void play_game(struct UserManager* manager, struct Map* game_map, 
-              struct Point* character_location, int score, int current_level, Inventory* inventory);
+               struct Point* character_location, int initial_score);
 void init_map(struct Map* map);
 void create_corridors(Room* rooms, int room_count, char map[MAP_HEIGHT][MAP_WIDTH]);
 void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count,
                          int* score, int* hunger_rate,
-                         int* ancient_key_count, int* broken_key_count,
-                         int weapon_counts[WEAPON_COUNT]);
+                         int* ancient_key_count, int* broken_key_count);
 void add_traps(struct Map* game_map);
 void print_password_messages(const char* message, int line_offset);
 Room* find_room_by_position(struct Map* map, int x, int y);
@@ -161,22 +198,10 @@ bool validate_stair_placement(struct Map* map);
 bool prompt_for_password_door(Room* door_room);
 void place_secret_doors(struct Map* map);
 void print_full_map(struct Map* game_map, struct Point* character_location);
-<<<<<<< HEAD
-<<<<<<< HEAD
-
-// Add functions for weapon management
-void add_weapon(Inventory* inventory, WeaponType type);
-void add_weapons(struct Map* game_map);
-void display_weapons(Inventory* inventory);
-Weapon get_weapon_by_type(WeaponType type);
-=======
->>>>>>> 0294fab (m vision okay)
-=======
->>>>>>> 0294fab (m vision okay)
 
 // Saving/Loading
 void save_current_game(struct UserManager* manager, struct Map* game_map, 
-                      struct Point* character_location, int score, int current_level, Inventory* inventory);
+                      struct Point* character_location, int score, int current_level);
 bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game);
 void list_saved_games(struct UserManager* manager);
 
@@ -187,8 +212,7 @@ bool canSeeRoomThroughWindow(struct Map* game_map, struct Room* room1, struct Ro
 
 // Movement and visibility
 // game.h
-void move_character(struct Point* character_location, int key,
-                    struct Map* game_map, int* hitpoints, Inventory* inventory);
+void move_character(Player* player, int key, struct Map* game_map, int* hitpoints);
 void place_password_generator_in_corner(struct Map* map, struct Room* room);
 void update_visibility(struct Map* map, struct Point* player_pos, bool visible[MAP_HEIGHT][MAP_WIDTH]);
 void sight_range(struct Map* game_map, struct Point* character_location);
@@ -211,5 +235,15 @@ void update_password_display();
 // Map display
 void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct Point character_location);
 struct Map generate_map(struct Room* previous_room);
+
+// Function declarations for weapons
+void add_weapons(struct Map* map);
+void handle_weapon_pickup(Player* player, struct Map* map, struct Point new_location);
+void open_weapon_inventory_menu(Player* player, struct Map* map);
+const char* symbol_to_name(char symbol);
+
+//void display_weapons_inventory(Player* player);
+void equip_weapon(Player* player, int weapon_index);
+void use_weapon(Player* player);
 
 #endif

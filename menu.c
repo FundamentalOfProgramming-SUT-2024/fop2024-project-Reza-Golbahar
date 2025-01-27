@@ -4,8 +4,6 @@
 #include "menu.h"
 #include "users.h"
 #include "game.h"
-#include "inventory.h"
-#include "weapons.h"
 
 
 bool init_ncurses(void) {
@@ -108,8 +106,18 @@ void adding_new_user(struct UserManager* manager) {
             continue;
         }
 
-        // Validate password
-        if (!validate_password(password)) {
+        // Validate password length
+        if (strlen(password) < 7) {
+            printw("\nPassword must be at least 7 characters long.\n");
+            printw("Press any key to try again...");
+            refresh();
+            getch();
+            continue;
+        }
+
+        // Using the proper password validation functions
+        if (!hasupper(password) || !haslower(password) || !hasdigit(password)) {
+            printw("\nPassword must contain at least one uppercase letter, one lowercase letter, and one number.\n");
             printw("Press any key to try again...");
             refresh();
             getch();
@@ -129,7 +137,10 @@ void adding_new_user(struct UserManager* manager) {
         }
 
         // Validate email format
-        if (!validate_email(email)) {
+        char* at = strchr(email, '@');
+        char* dot = strrchr(email, '.');
+        if (!at || !dot || at > dot || at == email || dot == at + 1 || !dot[1]) {
+            printw("\nInvalid email format. Must be xxx@yyy.zzz\n");
             printw("Press any key to try again...");
             refresh();
             getch();
@@ -145,12 +156,6 @@ void adding_new_user(struct UserManager* manager) {
         strncpy(new_user->email, email, MAX_STRING_LEN - 1);
         new_user->email[MAX_STRING_LEN - 1] = '\0';
         new_user->score = 0;
-        new_user->gold = 0;
-        new_user->games_completed = 0;
-        new_user->first_game_time = time(NULL);
-        new_user->last_game_time = time(NULL);
-        new_user->current_level = 1; // Initialize current_level
-
 
         // Store in usernames array
         strncpy(manager->usernames[manager->user_count], username, MAX_STRING_LEN - 1);
@@ -179,7 +184,6 @@ void adding_new_user(struct UserManager* manager) {
                 fprintf(file, "[\n");
             } else {
                 if (content) {
-                    // Remove the closing bracket
                     content[strlen(content) - 2] = ',';  // Replace the closing bracket with a comma
                     fprintf(file, "%s", content);
                     fprintf(file, "\n");
@@ -190,12 +194,8 @@ void adding_new_user(struct UserManager* manager) {
             fprintf(file, "    \"username\": \"%s\",\n", username);
             fprintf(file, "    \"password\": \"%s\",\n", password);
             fprintf(file, "    \"email\": \"%s\",\n", email);
-            fprintf(file, "    \"score\": \"%d\",\n", new_user->score);
-            fprintf(file, "    \"gold\": \"%d\",\n", new_user->gold);
-            fprintf(file, "    \"games_completed\": \"%d\",\n", new_user->games_completed);
-            fprintf(file, "    \"first_game_time\": \"%ld\",\n", new_user->first_game_time);
-            fprintf(file, "    \"last_game_time\": \"%ld\"\n", new_user->last_game_time);
-            fprintf(file, "  }%s\n]", (manager->user_count < MAX_USERS - 1) ? "," : "");
+            fprintf(file, "    \"score\": \"0\"\n");
+            fprintf(file, "  }\n]");
             fclose(file);
         }
 
@@ -236,27 +236,29 @@ int users_menu(struct UserManager* manager) {
     return user_id;
 }
 
+
 bool entering_menu(struct UserManager* manager, int selected_index) {
     while (1) {
         clear();
-        mvprintw(0, 0, "Enter the password for the chosen username");
+        printw("Enter the password for the chosen username");
         char password[MAX_STRING_LEN];
         noecho();
-        mvscanw(2, 0, "%s", password);
+        scanw("%s", password);
         echo();
 
         if (authenticate_user(manager, selected_index - 1, password)) {
-            mvprintw(4, 0, "Password is correct.\n");
+            printw("Password is correct.\n");
             refresh();
             getch();
             return true;
         } else {
-            mvprintw(4, 0, "Password is incorrect. Please try again.\n");
+            printw("Password is incorrect. Please try again.\n");
             refresh();
             getch();
         }
     }
 }
+
 
 void first_menu(struct UserManager* manager) {
     char input;
@@ -360,27 +362,26 @@ void settings(struct UserManager* manager) {
 }
 
 
-void login_menu(struct UserManager* manager, Inventory* inventory) {
+void login_menu(struct UserManager* manager) {
     clear();
-    int selected_index = users_menu(manager); // Assuming users_menu is implemented
+    int selected_index = users_menu(manager);
     if (selected_index > 0) {
         if (entering_menu(manager, selected_index)) {
-            pre_game_menu(manager, inventory); // Pass Inventory pointer
+            pre_game_menu(manager);
         }
     }
 }
 
-void register_menu(struct UserManager* manager, Inventory* inventory) {
+void register_menu(struct UserManager* manager) {
     clear();
     adding_new_user(manager);
     if (manager->user_count > 0) {
         manager->current_user = &manager->users[manager->user_count - 1];
-        pre_game_menu(manager, inventory); // Pass Inventory pointer
+        pre_game_menu(manager);
     }
 }
 
-
-void pre_game_menu(struct UserManager* manager, Inventory* inventory) {
+void pre_game_menu(struct UserManager* manager) {
     bool running = true;
 
     while (running) {
@@ -398,43 +399,42 @@ void pre_game_menu(struct UserManager* manager, Inventory* inventory) {
             mvprintw(8, 0, "Playing as Guest");
         }
         
-        mvprintw(9, 0, "Current Date and Time (UTC): %s", "2025-01-04 20:00:58"); // Replace with actual time if needed
+        mvprintw(9, 0, "Current Date and Time (UTC): 2025-01-04 20:00:58");
         mvprintw(11, 0, "Choose an option (1-5): ");
         refresh();
 
         int choice = getch();
-
+        
         switch (choice) {
             case '1': {
                 // Generate the map
                 struct Map new_map = generate_map(NULL);
+                printw("Map generated: %d rooms\n", new_map.room_count);  // Debugging line
                 struct Point start_pos = new_map.initial_position;
 
-                // Add weapons to the map
-                add_weapons(&new_map);
+                // Create a visibility array for the map (all tiles are initially unexplored)
+                bool visible[MAP_HEIGHT][MAP_WIDTH] = {0}; // All tiles hidden initially
+                visible[start_pos.y][start_pos.x] = 1; // Make the starting position visible
+
+                // Print the map with the starting location and visibility
+                print_map(&new_map, visible, start_pos);
 
                 // Start the game
-                if (manager->current_user) {
-                    play_game(manager, &new_map, &start_pos, manager->current_user->score, manager->current_user->current_level, &manager->current_user->inventory);
-                } else {
-                    // For guest users, use the passed inventory
-                    play_game(manager, &new_map, &start_pos, 0, 1, inventory);
-                }
+                play_game(manager, &new_map, &start_pos, 0);
                 break;
             }
-            case '2': {
+            case '2':
                 struct SavedGame saved;
                 if (load_saved_game(manager, &saved)) {
-                    // Start the game from saved state
-                    play_game(manager, &saved.game_map, &saved.character_location, saved.score, saved.current_level, &saved.inventory);
+                    // If successfully loaded, start the game from saved state
+                    play_game(manager, &saved.game_map, &saved.character_location, saved.score);
                 }
                 break;
-            }
             case '3':
-                print_scoreboard(manager); // Assuming print_scoreboard is implemented
+                print_scoreboard(manager);
                 break;
             case '4':
-                settings(manager); // Assuming settings is implemented
+                settings(manager);
                 break;
             case '5':
                 running = false;
@@ -447,4 +447,3 @@ void pre_game_menu(struct UserManager* manager, Inventory* inventory) {
         }
     }
 }
-

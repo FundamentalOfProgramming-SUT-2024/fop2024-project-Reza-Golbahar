@@ -1,16 +1,15 @@
-// users.h
 #ifndef USERS_H
 #define USERS_H
 
 #include <time.h>
 #include <stdbool.h>
-#include "inventory.h"
 
 #define MAX_USERS 100
 #define MAX_STRING_LEN 100
 #define USERS_PER_PAGE 10
 
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
+
 
 struct User {
     char username[MAX_STRING_LEN];
@@ -21,8 +20,6 @@ struct User {
     int games_completed;
     time_t first_game_time;
     time_t last_game_time;
-    int current_level;
-    Inventory inventory; // Inventory included here
 };
 
 struct UserManager {
@@ -31,6 +28,7 @@ struct UserManager {
     int user_count;
     struct User* current_user;
 };
+
 
 // Function declarations
 struct UserManager* create_user_manager(void);
@@ -43,6 +41,7 @@ void print_scoreboard(struct UserManager* manager);
 void print_profile(struct UserManager* manager);
 void handle_file_error(const char* operation);
 
+
 // Password validation functions
 int hasupper(const char password[]);
 int haslower(const char password[]);
@@ -50,4 +49,4 @@ int hasdigit(const char password[]);
 bool validate_password(char *password);
 bool validate_email(const char *email);
 
-#endif // USERS_H
+#endif
