@@ -38,6 +38,10 @@
 #define COLOR_PAIR_SPEED 11
 #define COLOR_PAIR_HEALTH 12
 
+#define ENEMY_FIRE_MONSTER 'F'
+#define MAX_ENEMIES 20           // Maximum number of enemies in the game
+#define ENEMY_HP_FIRE_MONSTER 10 // HP for Fire Breathing Monster
+
 
 // -- Secret doors --
 #define SECRET_DOOR_CLOSED '/'    // Placeholder for secret doors in the grid
@@ -88,10 +92,25 @@
 #define MAX_MESSAGES        5
 #define MESSAGE_LENGTH      100
 
+// Enemy Types
+typedef enum {
+    ENEMY_FIRE_BREATHING_MONSTER,
+    // Future enemy types can be added here
+} EnemyType;
+
 struct Point {
     int x;
     int y;
 };
+
+
+// Enemy Structure
+typedef struct Enemy {
+    EnemyType type;         // Type of the enemy
+    struct Point position;  // Current position on the map
+    int hp;                 // Hit Points
+    bool active;            // Whether the enemy is active (chasing the player)
+} Enemy;
 
 typedef struct Trap {
     struct Point location; // Position of the trap
@@ -145,6 +164,10 @@ struct Map {
 
     struct Point stairs_location;
     struct Point initial_position;
+
+    // Enemies
+    Enemy enemies[MAX_ENEMIES];
+    int enemy_count;
 };
 
 // Weapon structure
@@ -306,5 +329,14 @@ void open_spell_inventory_menu(struct Map* game_map, Player* player);
 void use_spell(Player* player, struct Map* game_map);
 const char* spell_type_to_name(SpellType type);
 void add_spells(struct Map* game_map);
+
+// Function Declarations for Enemies
+void add_enemies(struct Map* map, int current_level);
+void render_enemies(struct Map* map);
+void update_enemies(struct Map* map, Player* player, int* hitpoints);
+void move_enemy_towards(Player* player, Enemy* enemy, struct Map* map);
+bool is_enemy_in_same_room(Player* player, Enemy* enemy, struct Map* map);
+void combat(Player* player, Enemy* enemy, struct Map* map, int* hitpoints);
+
 
 #endif

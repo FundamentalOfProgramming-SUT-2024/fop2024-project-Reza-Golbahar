@@ -39,7 +39,6 @@ void initialize_player(Player* player, struct Point start_location) {
     // Initialize other player attributes as needed
 
     player->weapons[0] = create_weapon(WEAPON_MACE);
-
 }
 
 void play_game(struct UserManager* manager, struct Map* game_map, 
@@ -52,6 +51,10 @@ void play_game(struct UserManager* manager, struct Map* game_map,
     bool show_map = false;
 
     // Initialize player attributes
+    Player player;
+    initialize_player(&player, game_map->initial_position);
+
+    // Initialize other variables
     int hitpoints = 100;            // Initial hitpoints
     int hunger_rate = 0;            // Initial hunger rate
     const int MAX_HUNGER = 100;     // Threshold for hunger affecting hitpoints
@@ -72,9 +75,8 @@ void play_game(struct UserManager* manager, struct Map* game_map,
     bool visible[MAP_HEIGHT][MAP_WIDTH] = {0}; 
     visible[character_location->y][character_location->x] = 1; // Start position is visible
 
-    Player player;
-    initialize_player(&player, game_map->initial_position);
-    //player.location = *character_location;
+    // Message Queue for game messages
+    struct MessageQueue message_queue = { .count = 0 };
 
     while (game_running) {
         clear();
@@ -88,6 +90,9 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             // Display only visible parts of the map
             print_map(game_map, visible, *character_location);
         }
+
+        // Render enemies
+        render_enemies(game_map);
 
         // Show game info
         mvprintw(MAP_HEIGHT + 1, 0, "Level: %d", current_level);
@@ -108,6 +113,10 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         mvprintw(MAP_HEIGHT + 6, 0, "Controls: Arrow Keys to Move, 'i' - Weapon Inventory, 'e' - General Inventory, 'q' - Quit");
         refresh();
 
+        // Display messages
+        draw_messages(&message_queue, MAP_HEIGHT + 8, 0);
+        update_messages(&message_queue);
+
         // Increase hunger rate over time
         if (frame_count % HUNGER_INCREASE_INTERVAL == 0) {
             hunger_rate++;
@@ -117,6 +126,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         if (hunger_rate >= MAX_HUNGER) {
             if (hunger_damage_timer % HUNGER_DAMAGE_INTERVAL == 0) {
                 hitpoints -= HITPOINT_DECREASE_RATE;
+                add_game_message(&message_queue, "Hunger is too high! HP decreased.", 4); // COLOR_PAIR_TRAPS
             }
             hunger_damage_timer++;
         } else {
@@ -125,15 +135,9 @@ void play_game(struct UserManager* manager, struct Map* game_map,
 
         // Check if hitpoints are zero
         if (hitpoints <= 0) {
-            mvprintw(MAP_HEIGHT + 6, 0, "Game Over! You ran out of hitpoints.");
-            refresh();
-            getch();
+            add_game_message(&message_queue, "Game Over! You ran out of hitpoints.", 7); // COLOR_PAIR_FINAL_FAIL
             game_running = false;
-            break;
         }
-
-        update_password_display();
-        refresh();
 
         // Handle input
         int key = getch();
@@ -172,14 +176,15 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                         *game_map = new_map;
                         *character_location = new_map.initial_position;
 
-                        mvprintw(MAP_HEIGHT + 5, 0, "Level up! Welcome to Level %d.", current_level);
-                        refresh();
-                        getch();
+                        add_game_message(&message_queue, "Level up! Welcome to Level.", 3); // COLOR_PAIR_WEAPONS
+                        // Optionally, append the level number to the message
+                        char level_msg[50];
+                        snprintf(level_msg, sizeof(level_msg), "Level up! Welcome to Level %d.", current_level);
+                        add_game_message(&message_queue, level_msg, 3);
+                        // Reset player stats or adjust as needed
                     } else {
                         // Final level completion (Treasure Room reached)
-                        mvprintw(MAP_HEIGHT + 3, 0, "Congratulations! You've completed all levels.");
-                        refresh();
-                        getch();
+                        add_game_message(&message_queue, "Congratulations! You've completed all levels.", 2); // COLOR_PAIR_UNLOCKED_DOOR
                         game_running = false;
                     }
                 } else if (tile == FOOD) {
@@ -187,12 +192,14 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                     if (food_count < 5) {
                         game_map->grid[character_location->y][character_location->x] = FLOOR;
                         food_inventory[food_count++] = 1;
+                        add_game_message(&message_queue, "You collected some food.", 3); // COLOR_PAIR_WEAPONS
                     }
                 } else if (tile == GOLD) {
                     // Collect gold
                     game_map->grid[character_location->y][character_location->x] = FLOOR;
                     gold_count++;
                     score += 10;
+                    add_game_message(&message_queue, "You collected some gold.", 3); // COLOR_PAIR_WEAPONS
                 } else if (tile == FLOOR) {
                     // Check for traps
                     for (int i = 0; i < game_map->trap_count; i++) {
@@ -202,10 +209,8 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                             if (!trap->triggered) {
                                 trap->triggered = true;
                                 game_map->grid[character_location->y][character_location->x] = TRAP_SYMBOL;
-                                mvprintw(MAP_HEIGHT + 6, 0, "You triggered a trap! Hitpoints decreased.");
                                 hitpoints -= 10;
-                                refresh();
-                                getch();
+                                add_game_message(&message_queue, "You triggered a trap! Hitpoints decreased.", 4); // COLOR_PAIR_TRAPS
                             }
                             break;
                         }
@@ -217,7 +222,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             case 'E':
                 // Open inventory menu
                 open_inventory_menu(food_inventory, &food_count, &gold_count, &score, &hunger_rate,
-                        &ancient_key_count, &broken_key_count);
+                        &player.ancient_key_count, &player.broken_key_count);
                 break;
 
             case 'a':
@@ -243,6 +248,20 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                 break;
         }
 
+        // After player movement, check for enemy activation
+        for (int i = 0; i < game_map->enemy_count; i++) {
+            Enemy* enemy = &game_map->enemies[i];
+            
+            if (!enemy->active && is_enemy_in_same_room(&player, enemy, game_map)) {
+                enemy->active = true;
+                add_game_message(&message_queue, "An enemy has spotted you!", 16); // COLOR_PAIR_ENEMIES
+            }
+        }
+
+        // Update enemies' actions
+        update_enemies(game_map, &player, &hitpoints);
+
+        // Update password display
         update_password_display();
 
         // Increment frame count
@@ -313,6 +332,12 @@ void print_full_map(struct Map* game_map, struct Point* character_location) {
                             attroff(COLOR_PAIR(1));
                         }
                     }
+                    break;
+
+                case ENEMY_FIRE_MONSTER:
+                    attron(COLOR_PAIR(16)); // Define a new color pair for enemies
+                    mvaddch(y, x, ENEMY_FIRE_MONSTER);
+                    attroff(COLOR_PAIR(16));
                     break;
 
                 case TRAP_SYMBOL:
@@ -471,6 +496,8 @@ struct Map generate_map(struct Room* previous_room, int current_level, int max_l
 
     // Place stairs (if applicable)
     place_stairs(&map);
+
+    add_enemies(&map, current_level);
 
     // Set initial player position for the first map
     if (previous_room == NULL && map.room_count > 0) {
@@ -833,6 +860,13 @@ void print_map(struct Map* game_map,
                     attron(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE)); // Use Treasure Room color
                     mvaddch(y, x, TREASURE_CHEST);
                     attroff(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE));
+                    break;
+
+
+                case ENEMY_FIRE_MONSTER:
+                    attron(COLOR_PAIR(16)); // Define a new color pair for enemies
+                    mvaddch(y, x, ENEMY_FIRE_MONSTER);
+                    attroff(COLOR_PAIR(16));
                     break;
 
                 
@@ -1251,6 +1285,24 @@ void move_character(Player* player, int key, struct Map* game_map, int* hitpoint
         // Allow movement through the revealed secret door
         player->location = new_location;
         return;
+    }
+
+    else if (target_tile == ENEMY_FIRE_MONSTER) {
+        // Find the enemy at the target location
+        Enemy* enemy = NULL;
+        for (int i = 0; i < game_map->enemy_count; i++) {
+            if (game_map->enemies[i].position.x == new_location.x &&
+                game_map->enemies[i].position.y == new_location.y) {
+                enemy = &game_map->enemies[i];
+                break;
+            }
+        }
+
+        if (enemy) {
+            // Initiate combat
+            combat(player, enemy, game_map, hitpoints);
+        }
+        return; // Player doesn't move into the enemy's tile during combat
     }
 
 
@@ -1959,8 +2011,9 @@ Weapon create_weapon(char symbol) {
 void add_weapons(struct Map* map) {
     const int WEAPON_COUNT = 10; // Adjust as needed
     int weapons_placed = 0;
-    char weapon_symbols[] = {WEAPON_MACE, WEAPON_DAGGER, WEAPON_MAGIC_WAND, WEAPON_ARROW, WEAPON_SWORD};
-    int num_weapon_types = sizeof(weapon_symbols) / sizeof(weapon_symbols[0]);
+    char weapon_symbols[] = {WEAPON_DAGGER, WEAPON_MAGIC_WAND, WEAPON_ARROW, WEAPON_SWORD};
+    int num_weapon_types = sizeof(weapon_symbols) / sizeof(weapon_symbols[0]) - 1; //WEAPON_MACE cannot be placed in map
+
 
     while (weapons_placed < WEAPON_COUNT) {
         int x = rand() % MAP_WIDTH;
@@ -2487,4 +2540,235 @@ void use_spell(Player* player, struct Map* game_map) {
     }
     player->spell_count--;
     */
+}
+
+void add_enemies(struct Map* map, int current_level) {
+    // Define the number of enemies based on the current level
+    // For example, increase the number of enemies with each level
+    int enemies_to_add = current_level * 2; // Adjust as needed
+    
+    for (int i = 0; i < enemies_to_add && map->enemy_count < MAX_ENEMIES; i++) {
+        // Select a random room to place the enemy
+        if (map->room_count == 0) break; // No rooms to place enemies
+        
+        int room_index = rand() % map->room_count;
+        Room* room = &map->rooms[room_index];
+        
+        // Ensure the room is not the Treasure Room
+        if (room->theme == THEME_TREASURE) continue;
+        
+        // Select a random position within the room
+        int x = room->left_wall + 1 + rand() % (room->width - 2);
+        int y = room->top_wall + 1 + rand() % (room->height - 2);
+        
+        // Check if the tile is empty (floor)
+        if (map->grid[y][x] == FLOOR) {
+            // Initialize the enemy
+            Enemy enemy;
+            enemy.type = ENEMY_FIRE_BREATHING_MONSTER;
+            enemy.position.x = x;
+            enemy.position.y = y;
+            enemy.hp = ENEMY_HP_FIRE_MONSTER;
+            enemy.active = false; // Initially inactive
+            
+            // Add enemy to the map
+            map->enemies[map->enemy_count++] = enemy;
+            
+            // Represent the enemy on the map
+            map->grid[y][x] = ENEMY_FIRE_MONSTER;
+        }
+    }
+}
+
+void render_enemies(struct Map* map) {
+    for (int i = 0; i < map->enemy_count; i++) {
+        Enemy* enemy = &map->enemies[i];
+        
+        // Only render active enemies
+        if (enemy->active) {
+            // Check if the enemy is still in the map
+            if (map->grid[enemy->position.y][enemy->position.x] == ENEMY_FIRE_MONSTER) {
+                attron(COLOR_PAIR(16)); // Enemy color
+                mvaddch(enemy->position.y, enemy->position.x, ENEMY_FIRE_MONSTER);
+                attroff(COLOR_PAIR(16));
+            }
+        }
+    }
+}
+
+bool is_enemy_in_same_room(Player* player, Enemy* enemy, struct Map* map) {
+    // Find the room the player is in
+    struct Room* player_room = NULL;
+    for (int i = 0; i < map->room_count; i++) {
+        if (isPointInRoom(&player->location, &map->rooms[i])) {
+            player_room = &map->rooms[i];
+            break;
+        }
+    }
+
+    if (player_room == NULL) return false; // Player is not in any room
+
+    // Check if the enemy is in the same room
+    for (int i = 0; i < map->room_count; i++) {
+        if (isPointInRoom(&enemy->position, &map->rooms[i])) {
+            return (player_room == &map->rooms[i]);
+        }
+    }
+
+    return false;
+}
+
+void update_enemies(struct Map* map, Player* player, int* hitpoints) {
+    for (int i = 0; i < map->enemy_count; i++) {
+        Enemy* enemy = &map->enemies[i];
+
+        if (!enemy->active) continue; // Skip inactive enemies
+
+        // Simple AI: Move one step towards the player if within the room
+        if (is_enemy_in_same_room(player, enemy, map)) {
+            move_enemy_towards(player, enemy, map);
+        }
+
+        // Check if enemy has reached the player
+        if (enemy->position.x == player->location.x && 
+            enemy->position.y == player->location.y) {
+            // Enemy attacks the player
+            *hitpoints -= 5; // Adjust damage as needed
+            add_game_message(map->enemy_count > 0 ? &((struct MessageQueue){0}) : NULL, "An enemy attacks you! HP decreased.", 4);
+        }
+    }
+}
+
+void move_enemy_towards(Player* player, Enemy* enemy, struct Map* map) {
+    int dx = player->location.x - enemy->position.x;
+    int dy = player->location.y - enemy->position.y;
+
+    // Normalize movement to one step
+    if (dx != 0) dx = dx / abs(dx);
+    if (dy != 0) dy = dy / abs(dy);
+
+    // Determine new position
+    int new_x = enemy->position.x + dx;
+    int new_y = enemy->position.y + dy;
+
+    // Check map boundaries
+    if (new_x < 0 || new_x >= MAP_WIDTH || new_y < 0 || new_y >= MAP_HEIGHT)
+        return;
+
+    char target_tile = map->grid[new_y][new_x];
+
+    // Check if the tile is passable (floor or player)
+    if (target_tile == FLOOR || target_tile == PLAYER_CHAR) {
+        // Check if another enemy is already on the target tile
+        bool occupied = false;
+        for (int i = 0; i < map->enemy_count; i++) {
+            if (i == enemy - map->enemies) continue; // Skip self
+            if (map->enemies[i].position.x == new_x && 
+                map->enemies[i].position.y == new_y) {
+                occupied = true;
+                break;
+            }
+        }
+
+        if (!occupied) {
+            // Update the map grid
+            map->grid[enemy->position.y][enemy->position.x] = FLOOR; // Remove enemy from current position
+            enemy->position.x = new_x;
+            enemy->position.y = new_y;
+            map->grid[new_y][new_x] = ENEMY_FIRE_MONSTER; // Place enemy at new position
+        }
+    }
+    // If the target tile is another enemy or impassable, enemy stays in place
+}
+
+void combat(Player* player, Enemy* enemy, struct Map* map, int* hitpoints) {
+    bool in_combat = true;
+    while (in_combat) {
+        clear();
+        mvprintw(0, 0, "Combat with Fire Breathing Monster!");
+        mvprintw(2, 0, "Your HP: %d", player->hitpoints);
+        mvprintw(3, 0, "Enemy HP: %d", enemy->hp);
+        mvprintw(5, 0, "Choose action: (A)ttack or (R)un");
+        refresh();
+
+        int choice = getch();
+        switch (tolower(choice)) {
+            case 'a':
+                {
+                    // Player attacks enemy
+                    int damage = 0;
+                    if (player->equipped_weapon != -1) {
+                        damage = player->weapons[player->equipped_weapon].damage;
+                    } else {
+                        damage = 5; // Unarmed damage
+                    }
+
+                    enemy->hp -= damage;
+                    if (enemy->hp <= 0) {
+                        // Enemy defeated
+                        add_game_message(map->enemy_count > 0 ? &((struct MessageQueue){0}) : NULL, "You defeated the Fire Breathing Monster!", 2);
+                        // Remove enemy from the map
+                        map->grid[enemy->position.y][enemy->position.x] = FLOOR;
+                        // Shift enemies in the array
+                        for (int i = 0; i < map->enemy_count; i++) {
+                            if (&map->enemies[i] == enemy) {
+                                for (int j = i; j < map->enemy_count - 1; j++) {
+                                    map->enemies[j] = map->enemies[j + 1];
+                                }
+                                map->enemy_count--;
+                                break;
+                            }
+                        }
+                        in_combat = false;
+                        break;
+                    }
+
+                    // Enemy attacks player
+                    player->hitpoints -= 5; // Enemy damage
+                    if (player->hitpoints <= 0) {
+                        add_game_message(map->enemy_count > 0 ? &((struct MessageQueue){0}) : NULL, "The enemy has defeated you!", 7);
+                        in_combat = false;
+                        break;
+                    }
+
+                    // Continue combat
+                    add_game_message(map->enemy_count > 0 ? &((struct MessageQueue){0}) : NULL, "You attacked the enemy.", 3);
+                    add_game_message(map->enemy_count > 0 ? &((struct MessageQueue){0}) : NULL, "The enemy attacked you.", 4);
+                }
+                break;
+
+            case 'r':
+                {
+                    // Attempt to run
+                    // Simple logic: 50% chance to escape
+                    if (rand() % 100 < 50) {
+                        add_game_message(map->enemy_count > 0 ? &((struct MessageQueue){0}) : NULL, "You successfully escaped!", 3);
+                        in_combat = false;
+                        // Move player back to previous position
+                        // (Implement movement logic if necessary)
+                    } else {
+                        add_game_message(map->enemy_count > 0 ? &((struct MessageQueue){0}) : NULL, "Failed to escape! The enemy attacks you.", 4);
+                        // Enemy attacks player
+                        player->hitpoints -= 5;
+                        if (player->hitpoints <= 0) {
+                            add_game_message(map->enemy_count > 0 ? &((struct MessageQueue){0}) : NULL, "The enemy has defeated you!", 7);
+                            in_combat = false;
+                        }
+                    }
+                }
+                break;
+
+            default:
+                // Invalid input, continue combat
+                break;
+        }
+
+        // Check for game over
+        if (player->hitpoints <= 0) {
+            in_combat = false;
+            // Handle game over in the main loop
+        }
+
+        refresh();
+    }
 }

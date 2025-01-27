@@ -43,6 +43,7 @@ bool init_ncurses(void) {
     init_pair(COLOR_PAIR_SPEED,   COLOR_CYAN,     COLOR_BLACK); // Speed Spell
     init_pair(COLOR_PAIR_DAMAGE,  COLOR_RED,      COLOR_BLACK); // Damage Spell
 
+    init_pair(16, COLOR_RED, COLOR_BLACK);    // Enemies
 
 
     return true;
