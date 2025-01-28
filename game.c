@@ -90,10 +90,27 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             // Display only visible parts of the map
             print_map(game_map, visible, *character_location);
         }
+        update_password_display();
 
         // Render enemies
         render_enemies(game_map);
+        
 
+        // After player movement, check for enemy activation
+        for (int i = 0; i < game_map->enemy_count; i++) {
+            Enemy* enemy = &game_map->enemies[i];
+            
+            if (!enemy->active && is_enemy_in_same_room(&player, enemy, game_map)) {
+                enemy->active = true;
+                add_game_message(&message_queue, "An enemy has spotted you!", 16); // COLOR_PAIR_ENEMIES
+            }
+        }
+
+
+        //mvprintw(10, 10, "a");
+        // Update enemies' actions
+        update_enemies(game_map, &player, &hitpoints);
+        
         // Show game info
         mvprintw(MAP_HEIGHT + 1, 0, "Level: %d", current_level);
         if (player.equipped_weapon != -1) {
@@ -247,25 +264,6 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                 game_running = false;
                 break;
         }
-
-        // After player movement, check for enemy activation
-        for (int i = 0; i < game_map->enemy_count; i++) {
-            Enemy* enemy = &game_map->enemies[i];
-            
-            if (!enemy->active && is_enemy_in_same_room(&player, enemy, game_map)) {
-                enemy->active = true;
-                add_game_message(&message_queue, "An enemy has spotted you!", 16); // COLOR_PAIR_ENEMIES
-            }
-        }
-
-
-        // Update enemies' actions
-        update_enemies(game_map, &player, &hitpoints);
-
-        // Update password display
-        update_password_display();
-
-        // Increment frame count
         frame_count++;
     }
 }
@@ -1482,6 +1480,7 @@ void init_map(struct Map* map) {
     }
     map->room_count = 0;
     map->trap_count = 0; // Initialize trap count
+    map->enemy_count = 0;
 }
 
 bool rooms_overlap(const struct Room* r1, const struct Room* r2) {
@@ -2598,44 +2597,16 @@ void render_enemies(struct Map* map) {
 }
 
 bool is_enemy_in_same_room(Player* player, Enemy* enemy, struct Map* map) {
-    // Find the room the player is in
-    struct Room* player_room = NULL;
-    for (int i = 0; i < map->room_count; i++) {
-        if (isPointInRoom(&player->location, &map->rooms[i])) {
-            player_room = &map->rooms[i];
-            break;
-        }
-    }
-
-    if (player_room == NULL) return false; // Player is not in any room
-
-    // Check if the enemy is in the same room
-    for (int i = 0; i < map->room_count; i++) {
-        if (isPointInRoom(&enemy->position, &map->rooms[i])) {
-            return (player_room == &map->rooms[i]);
-        }
-    }
-
-    return false;
+    return (find_room_by_position(map, player->location.x, player->location.y) == find_room_by_position(map, enemy->position.x, enemy->position.y));
 }
 
 void update_enemies(struct Map* map, Player* player, int* hitpoints) {
     for (int i = 0; i < map->enemy_count; i++) {
         Enemy* enemy = &map->enemies[i];
+        if (!enemy->active) continue;
 
-        if (!enemy->active) continue; // Skip inactive enemies
-
-        // Simple AI: Move one step towards the player if within the room
         if (is_enemy_in_same_room(player, enemy, map)) {
             move_enemy_towards(player, enemy, map);
-        }
-
-        // Check if enemy has reached the player
-        if (enemy->position.x == player->location.x && 
-            enemy->position.y == player->location.y) {
-            // Enemy attacks the player
-            *hitpoints -= 5; // Adjust damage as needed
-            add_game_message(map->enemy_count > 0 ? &((struct MessageQueue){0}) : NULL, "An enemy attacks you! HP decreased.", 4);
         }
     }
 }
@@ -2679,12 +2650,11 @@ void move_enemy_towards(Player* player, Enemy* enemy, struct Map* map) {
             map->grid[new_y][new_x] = ENEMY_FIRE_MONSTER; // Place enemy at new position
         }
     }
-    // If the target tile is another enemy or impassable, enemy stays in place
 }
 
 void combat(Player* player, Enemy* enemy, struct Map* map, int* hitpoints) {
     bool in_combat = true;
-    while (in_combat) {
+    while (in_combat) { 
         clear();
         mvprintw(0, 0, "Combat with Fire Breathing Monster!");
         mvprintw(2, 0, "Your HP: %d", player->hitpoints);
