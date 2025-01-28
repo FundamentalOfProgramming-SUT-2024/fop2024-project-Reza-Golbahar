@@ -162,6 +162,8 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             show_map = !show_map;  // Toggle the map visibility flag
             continue;  // Skip the rest of the loop to refresh the display
         }
+        if (key=='g')
+            save_current_game(manager, game_map, character_location, score, current_level);
         switch (key) {
             case KEY_UP:
             case KEY_DOWN:

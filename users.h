@@ -11,6 +11,15 @@
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 
 
+struct GameState {
+    int level;
+    int score;
+    int gold;
+    time_t start_time;
+    time_t last_saved_time;
+};
+
+
 struct User {
     char username[MAX_STRING_LEN];
     char password[MAX_STRING_LEN];
@@ -20,6 +29,8 @@ struct User {
     int games_completed;
     time_t first_game_time;
     time_t last_game_time;
+
+    struct GameState game_state;  // Add the game state here
 };
 
 struct UserManager {
