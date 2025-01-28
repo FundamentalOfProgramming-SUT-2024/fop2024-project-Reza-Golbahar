@@ -258,6 +258,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             }
         }
 
+
         // Update enemies' actions
         update_enemies(game_map, &player, &hitpoints);
 
