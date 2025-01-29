@@ -61,9 +61,9 @@
 #define WEAPON_SWORD        '5'
 
 // Spell Symbols
-#define SPELL_HEALTH 'H'
-#define SPELL_SPEED  'S'
-#define SPELL_DAMAGE 'D'
+#define SPELL_HEALTH '6'
+#define SPELL_SPEED  '7'
+#define SPELL_DAMAGE '8'
 
 #define TREASURE_CHEST 'T'
 

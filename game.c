@@ -131,7 +131,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         refresh();
 
         // Display messages
-        draw_messages(&message_queue, MAP_HEIGHT + 1, 0);
+        draw_messages(&message_queue, 0, MAP_WIDTH+1);
         update_messages(&message_queue);
 
         // Increase hunger rate over time
