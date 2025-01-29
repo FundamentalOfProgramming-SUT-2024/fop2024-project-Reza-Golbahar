@@ -481,7 +481,7 @@ void pre_game_menu(struct UserManager* manager) {
         }
         
         mvprintw(10, 0, "Current Date and Time (UTC): 2025-01-04 20:00:58");
-        mvprintw(12, 0, "Choose an option (1-5): ");
+        mvprintw(12, 0, "Choose an option (1-6): ");
         refresh();
 
         int choice = getch();

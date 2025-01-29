@@ -166,8 +166,10 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             show_map = !show_map;  // Toggle the map visibility flag
             continue;  // Skip the rest of the loop to refresh the display
         }
-        if (key=='g')
+        if (key=='g'){
+            manager->current_user->gold = gold_count;
             save_current_game(manager, game_map, character_location, score, current_level);
+        }
         switch (key) {
             case KEY_UP:
             case KEY_DOWN:
@@ -267,6 +269,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                 break;
 
             case 'q':
+                manager->current_user->gold = gold_count;
                 save_current_game(manager, game_map, character_location, score, current_level);
 
                 game_running = false;
@@ -275,7 +278,6 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         frame_count++;
     }
 }
-
 
 void print_full_map(struct Map* game_map, struct Point* character_location, struct UserManager* manager) {
     for (int y = 0; y < MAP_HEIGHT; y++) {
@@ -441,7 +443,6 @@ void print_full_map(struct Map* game_map, struct Point* character_location, stru
         }
     }
 }
-
 
 struct Map generate_map(struct Room* previous_room, int current_level, int max_level) {
     struct Map map;
@@ -1862,6 +1863,7 @@ bool create_safe_filename(char* dest, size_t dest_size, const char* username, co
 
 void save_current_game(struct UserManager* manager, struct Map* game_map, 
                       struct Point* character_location, int score, int current_level) {
+    manager->current_user->score = score;
     save_users_to_json(manager);
     //load_users_from_json(manager);
     if (!manager->current_user) {
