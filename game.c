@@ -1896,6 +1896,7 @@ bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game) 
     clear();
     mvprintw(0, 0, "Enter save name to load: ");
     list_saved_games(manager);
+    printw("\n");
     refresh();
 
     char save_name[100];

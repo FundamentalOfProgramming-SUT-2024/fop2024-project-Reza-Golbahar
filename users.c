@@ -253,9 +253,9 @@ void print_scoreboard(struct UserManager* manager) {
             if (i < 3) {
                 // Top 3 players get special colors and medals
                 attron(COLOR_PAIR(i + 1) | A_BOLD);
-                const char* medals[] = {"🏆", "🥈", "🥉"};
+                //const char* medals[] = {"🏆", "🥈", "🥉"};
                 const char* titles[] = {"GOAT", "Legend", "Champion"};
-                mvprintw(row, 0, "%s %d", medals[i], i + 1);
+                //mvwprintw(row, 0, "%s %d", medals[i], i + 1);
                 mvprintw(row, 70, "%s", titles[i]);
             } else {
                 // Normal ranking
@@ -279,6 +279,7 @@ void print_scoreboard(struct UserManager* manager) {
             // Reset attributes
             attroff(COLOR_PAIR(1) | COLOR_PAIR(2) | COLOR_PAIR(3) | COLOR_PAIR(4) | A_BOLD);
         }
+
 
         // Print navigation instructions
         mvprintw(USERS_PER_PAGE + 6, 0, "Navigation: 'n' - Next Page, 'p' - Previous Page, 'q' - Quit");

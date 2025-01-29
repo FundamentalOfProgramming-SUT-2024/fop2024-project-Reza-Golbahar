@@ -504,7 +504,6 @@ void pre_game_menu(struct UserManager* manager) {
             case '1': {
                 // Generate the map
                 struct Map new_map = generate_map(NULL,1 ,4);
-                printw("Map generated: %d rooms\n", new_map.room_count);  // Debugging line
                 struct Point start_pos = new_map.initial_position;
 
                 // Create a visibility array for the map (all tiles are initially unexplored)
