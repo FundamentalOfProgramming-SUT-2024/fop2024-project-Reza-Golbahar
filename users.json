@@ -3,11 +3,11 @@
     "username": "Reza",
     "password": "Lord453",
     "email": "s@g.c",
-    "score": "0",
-    "gold_collected": "0",
-    "difficulty": 8,
-    "color": "Green",
-    "song": 3,
+    "score": "70",
+    "gold_collected": "6",
+    "difficulty": 0,
+    "color": "",
+    "song": 0,
     "games_played": 0,
     "days_since_first_game": 20117
   },
@@ -15,12 +15,12 @@
     "username": "Reza2",
     "password": "Lord453",
     "email": "s@g.c",
-    "score": "10",
-    "gold_collected": "1",
-    "difficulty": 1,
-    "color": "White",
-    "song": 1,
+    "score": "0",
+    "gold_collected": "0",
+    "difficulty": 0,
+    "color": "",
+    "song": 0,
     "games_played": 0,
-    "days_since_first_game": 0
+    "days_since_first_game": 20117
   }
 ]

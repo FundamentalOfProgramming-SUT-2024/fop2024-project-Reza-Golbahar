@@ -112,26 +112,26 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         update_enemies(game_map, &player, &hitpoints);
         
         // Show game info
-        mvprintw(MAP_HEIGHT + 1, 0, "Level: %d", current_level);
         if (player.equipped_weapon != -1) {
-            mvprintw(MAP_HEIGHT + 2, 0, "Equipped Weapon: %s (Damage: %d)", 
-                     player.weapons[player.equipped_weapon].name, 
+        mvprintw(MAP_HEIGHT + 2, 0, "Level: %d                             Equipped Weapon: %s (Damage: %d)",
+                     current_level, player.weapons[player.equipped_weapon].name, 
                      player.weapons[player.equipped_weapon].damage);
         } else {
-            mvprintw(MAP_HEIGHT + 2, 0, "Equipped Weapon: None");
+            mvprintw(MAP_HEIGHT + 2, 0, "Level: %d                             Equipped Weapon: None"
+                    ,current_level);
         }
-        mvprintw(MAP_HEIGHT + 3, 0, "Score: %d", score);
-        mvprintw(MAP_HEIGHT + 4, 0, "Hitpoints: %d", hitpoints);
         if (manager->current_user) {
-            mvprintw(MAP_HEIGHT + 5, 0, "Player: %s", manager->current_user->username);
+        mvprintw(MAP_HEIGHT +3, 0, "Score: %d               Hitpoints: %d                  Player: %s", 
+                score, hitpoints, manager->current_user->username);
         } else {
-            mvprintw(MAP_HEIGHT + 5, 0, "Player: Guest");
+            mvprintw(MAP_HEIGHT + 3, 0, "Score: %d               Hitpoints: %d                  Player: Guest",
+                    score, hitpoints);
         }
-        mvprintw(MAP_HEIGHT + 6, 0, "Controls: Arrow Keys to Move, 'i' - Weapon Inventory, 'e' - General Inventory, 'q' - Quit g-save");
+        mvprintw(MAP_HEIGHT + 4, 0, "Controls: Arrow Keys to Move, 'i' - Weapon Inventory, 'e' - General Inventory, 'q' - Quit g-save");
         refresh();
 
         // Display messages
-        draw_messages(&message_queue, MAP_HEIGHT + 8, 0);
+        draw_messages(&message_queue, MAP_HEIGHT + 1, 0);
         update_messages(&message_queue);
 
         // Increase hunger rate over time
@@ -168,7 +168,8 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         }
         if (key=='g'){
             manager->current_user->gold = gold_count;
-            save_current_game(manager, game_map, character_location, score, current_level);
+            if (manager->current_user)
+                save_current_game(manager, game_map, character_location, score, current_level);
         }
         switch (key) {
             case KEY_UP:
@@ -176,7 +177,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             case KEY_LEFT:
             case KEY_RIGHT:
                 // Move the character
-                move_character(&player, key, game_map, &hitpoints);
+                move_character(&player, key, game_map, &hitpoints, &message_queue);
                 *character_location = player.location; // Synchronize positions
 
                 // Check the tile the player moves onto
@@ -269,7 +270,9 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                 break;
 
             case 'q':
-                manager->current_user->gold = gold_count;
+                if (manager->current_user)
+                    manager->current_user->gold = gold_count;
+
                 save_current_game(manager, game_map, character_location, score, current_level);
 
                 game_running = false;
@@ -1201,7 +1204,7 @@ void place_password_generator_in_corner(struct Map* map, struct Room* room) {
     // (This is unlikely if the room is large enough).
 }
 
-void move_character(Player* player, int key, struct Map* game_map, int* hitpoints){
+void move_character(Player* player, int key, struct Map* game_map, int* hitpoints, struct MessageQueue* message_queue){
     struct Point new_location = player->location;
     switch (key) {
         case KEY_UP:    new_location.y--; break;
@@ -1305,8 +1308,7 @@ void move_character(Player* player, int key, struct Map* game_map, int* hitpoint
         // Pick up the Ancient Key
         game_map->grid[new_location.y][new_location.x] = FLOOR; // Remove the key from the map
         ancient_key_count++;
-        mvprintw(12, 80, "You picked up an");
-        mvprintw(13, 80, "Ancient Key!");
+        add_game_message(message_queue, "You picked up an Ancient Key!", 2); //at the time 2 is the color green
         refresh();
         getch();
     }
@@ -1316,7 +1318,7 @@ void move_character(Player* player, int key, struct Map* game_map, int* hitpoint
     else if (target_tile == SECRET_DOOR_CLOSED) {
         // Reveal the secret door
         game_map->grid[new_location.y][new_location.x] = SECRET_DOOR_REVEALED;
-        mvprintw(MAP_HEIGHT + 7, 0, "You discovered a secret door!");
+        add_game_message(message_queue, "You discovered a secret door!", 2); //at the time 2 is the color green
         refresh();
         getch();
         // Move the player through the revealed secret door
@@ -1368,9 +1370,9 @@ void move_character(Player* player, int key, struct Map* game_map, int* hitpoint
     player->location = new_location;
 
     
-    handle_weapon_pickup(player, game_map, new_location);
+    handle_weapon_pickup(player, game_map, new_location, message_queue);
 
-    handle_spell_pickup(player, game_map, new_location);
+    handle_spell_pickup(player, game_map, new_location, message_queue);
 
     // -----------------------------------------------------------
     // 3) Trap logic: If we just moved onto a trap location, trigger damage
@@ -1384,7 +1386,7 @@ void move_character(Player* player, int key, struct Map* game_map, int* hitpoint
                 trap->triggered = true;
                 game_map->grid[new_location.y][new_location.x] = TRAP_SYMBOL;
                 *hitpoints -= 10;  // Reduce HP
-                mvprintw(MAP_HEIGHT + 6, 0, "You triggered a trap! HP -10.");
+                add_game_message(message_queue, "You triggered a trap! HP -10.", 7); //at the time 7 is the color red
                 refresh();
             }
             break;
@@ -1549,11 +1551,6 @@ void add_gold(struct Map* game_map) {
     }
 }
 
-void message(const char* text) {
-    mvprintw(MAP_HEIGHT, 0, "%s", text);
-    refresh();
-}
-
 bool isPointInRoom(struct Point* point, struct Room* room) {
     return (point->x >= room->left_wall && point->x <= room->right_wall &&
             point->y >= room->top_wall && point->y <= room->bottom_wall);
@@ -1616,7 +1613,7 @@ void add_game_message(struct MessageQueue* queue, const char* text, int color_pa
     struct GameMessage* msg = &queue->messages[queue->count];
     strncpy(msg->text, text, MESSAGE_LENGTH - 1);
     msg->text[MESSAGE_LENGTH - 1] = '\0';
-    msg->time_to_live = 60;  // Show for ~2 seconds at 30 fps
+    msg->time_to_live = 10;  // Show for ~2 seconds at 30 fps
     msg->color_pair = color_pair;
     queue->count++;
 }
@@ -1863,8 +1860,6 @@ bool create_safe_filename(char* dest, size_t dest_size, const char* username, co
 
 void save_current_game(struct UserManager* manager, struct Map* game_map, 
                       struct Point* character_location, int score, int current_level) {
-    manager->current_user->score = score;
-    save_users_to_json(manager);
     //load_users_from_json(manager);
     if (!manager->current_user) {
         mvprintw(0, 0, "Cannot save game as guest user.");
@@ -1872,6 +1867,8 @@ void save_current_game(struct UserManager* manager, struct Map* game_map,
         getch();
         return;
     }
+    manager->current_user->score = score;
+    save_users_to_json(manager);
 
     char filename[256]; // Increased buffer size to prevent truncation
     char save_name[100];
@@ -2085,7 +2082,7 @@ void add_weapons(struct Map* map) {
     }
 }
 
-void handle_weapon_pickup(Player* player, struct Map* map, struct Point new_location) {
+void handle_weapon_pickup(Player* player, struct Map* map, struct Point new_location, struct MessageQueue* message_queue) {
     char tile = map->grid[new_location.y][new_location.x];
     
     // Check if the tile is a weapon
@@ -2093,10 +2090,7 @@ void handle_weapon_pickup(Player* player, struct Map* map, struct Point new_loca
         tile == WEAPON_ARROW || tile == WEAPON_SWORD) {
         
         if (player->weapon_count >= MAX_WEAPONS) {
-            // Inventory full, notify the player
-            mvprintw(12, 80, "Your weapon inventory is full! Cannot pick up %s.", symbol_to_name(tile));
-            refresh();
-            getch();
+            add_game_message(message_queue, "Your weapon inventory is full!", 7); //at the time 7 is the color red
             return;
         }
 
@@ -2110,11 +2104,10 @@ void handle_weapon_pickup(Player* player, struct Map* map, struct Point new_loca
         // Notify the player
         char message[100];
         snprintf(message, sizeof(message), "You picked up a %s!", picked_weapon.name);
-        mvprintw(12, 80, "%s", message);
-        refresh();
-        getch();
+        add_game_message(message_queue, message, 2); //at the time 2 is the color green
     }
 }
+
 
 
 const char* symbol_to_name(char symbol) {
@@ -2359,21 +2352,19 @@ void add_spells(struct Map* game_map) {
     }
 }
 
-void handle_spell_pickup(Player* player, struct Map* map, struct Point new_location) {
+void handle_spell_pickup(Player* player, struct Map* map, struct Point new_location, struct MessageQueue* message_queue) {
     char tile = map->grid[new_location.y][new_location.x];
     
     // Check if the tile is a spell
     if (tile == SPELL_HEALTH || tile == SPELL_SPEED || tile == SPELL_DAMAGE) {
-        
         if (player->spell_count >= MAX_SPELLS) {
-            // Inventory full, notify the player
-            mvprintw(12, 80, "Your spell inventory is full! Cannot pick up %s.", spell_type_to_name(
-                (tile == SPELL_HEALTH) ? SPELL_HEALTH_TYPE :
+            char full_message[100];
+            snprintf(full_message, sizeof(full_message), "Your spell inventory is full! Cannot pick up %s.", spell_type_to_name(
+               (tile == SPELL_HEALTH) ? SPELL_HEALTH_TYPE :
                 (tile == SPELL_SPEED)  ? SPELL_SPEED_TYPE :
-                SPELL_DAMAGE_TYPE
+               SPELL_DAMAGE_TYPE
             ));
-            refresh();
-            getch();
+            add_game_message(message_queue, full_message, 7); //at the time 7 is the color red
             return;
         }
 
@@ -2387,11 +2378,10 @@ void handle_spell_pickup(Player* player, struct Map* map, struct Point new_locat
         // Notify the player
         char message[100];
         snprintf(message, sizeof(message), "You picked up a %s!", picked_spell.name);
-        mvprintw(12, 80, "%s", message);
-        refresh();
-        getch();
+        add_game_message(message_queue, message, 2); // at the time 2 is the color green
     }
 }
+
 
 const char* spell_type_to_name(SpellType type) {
     switch(type) {

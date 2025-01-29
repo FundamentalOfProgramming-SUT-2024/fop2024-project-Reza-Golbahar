@@ -288,7 +288,7 @@ bool canSeeRoomThroughWindow(struct Map* game_map, struct Room* room1, struct Ro
 
 // Movement and visibility
 // game.h
-void move_character(Player* player, int key, struct Map* game_map, int* hitpoints);
+void move_character(Player* player, int key, struct Map* game_map, int* hitpoints, struct MessageQueue* message_queue);
 void place_password_generator_in_corner(struct Map* map, struct Room* room);
 void update_visibility(struct Map* map, struct Point* player_pos, bool visible[MAP_HEIGHT][MAP_WIDTH]);
 void sight_range(struct Map* game_map, struct Point* character_location);
@@ -314,7 +314,7 @@ struct Map generate_map(struct Room* previous_room, int current_level, int max_l
 
 // Function declarations for weapons
 void add_weapons(struct Map* map);
-void handle_weapon_pickup(Player* player, struct Map* map, struct Point new_location);
+void handle_weapon_pickup(Player* player, struct Map* map, struct Point new_location, struct MessageQueue* message_queue);
 void open_weapon_inventory_menu(Player* player, struct Map* map);
 const char* symbol_to_name(char symbol);
 Weapon create_weapon(char symbol);
@@ -324,7 +324,7 @@ void use_weapon(Player* player);
 
 // Function Declarations
 Spell create_spell(char symbol);
-void handle_spell_pickup(Player* player, struct Map* map, struct Point new_location);
+void handle_spell_pickup(Player* player, struct Map* map, struct Point new_location, struct MessageQueue* message_queue);
 void open_spell_inventory_menu(struct Map* game_map, Player* player);
 void use_spell(Player* player, struct Map* game_map);
 const char* spell_type_to_name(SpellType type);
