@@ -5,7 +5,12 @@
 #include <stdbool.h>
 #include "game.h"
 
+#define MAX_USERS 100
+#define MAX_STRING_LEN 100
+#define PASSWORD_LENGTH 12
+#define SPECIAL_CHARACTERS "!@#$%^&*()-_=+[]{}|;:,.<>?/"
 
+void generate_password(char *password, int length);
 bool init_ncurses(void);
 void first_menu(struct UserManager* manager);
 void pre_game_menu(struct UserManager* manager);

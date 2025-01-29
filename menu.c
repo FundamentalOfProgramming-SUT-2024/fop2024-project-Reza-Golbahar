@@ -49,6 +49,43 @@ bool init_ncurses(void) {
     return true;
 }
 
+// Function to generate a random password
+void generate_password(char *password, int length) {
+    const char *uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const char *lowercase = "abcdefghijklmnopqrstuvwxyz";
+    const char *digits = "0123456789";
+    const char *special = SPECIAL_CHARACTERS;
+    
+    int i;
+    size_t upper_len = strlen(uppercase);
+    size_t lower_len = strlen(lowercase);
+    size_t digit_len = strlen(digits);
+    size_t special_len = strlen(special);
+
+    srand(time(NULL)); // Seed for randomness
+
+    // Ensure at least one character from each category
+    password[0] = uppercase[rand() % upper_len];
+    password[1] = lowercase[rand() % lower_len];
+    password[2] = digits[rand() % digit_len];
+    password[3] = special[rand() % special_len];
+
+    // Fill the rest randomly
+    for (i = 4; i < length; i++) {
+        int category = rand() % 4;
+        if (category == 0)
+            password[i] = uppercase[rand() % upper_len];
+        else if (category == 1)
+            password[i] = lowercase[rand() % lower_len];
+        else if (category == 2)
+            password[i] = digits[rand() % digit_len];
+        else
+            password[i] = special[rand() % special_len];
+    }
+
+    password[length] = '\0'; // Null-terminate the string
+}
+
 void adding_new_user(struct UserManager* manager) {
     if (manager->user_count >= MAX_USERS) {
         clear();
@@ -107,15 +144,28 @@ void adding_new_user(struct UserManager* manager) {
         }
 
         // Password input
-        printw("\nPassword (minimum 7 characters, must include uppercase, lowercase, and number): ");
+        printw("\nPassword (minimum 7 characters, must include uppercase, lowercase, and number):\n");
+        printw("Press + to generate random password. Otherwise, press any key to continue: \n");
+
         refresh();
-        
-        noecho(); // Disable echo for password
-        if (getnstr(password, sizeof(password) - 1) != OK) {
-            printw("\nError reading password. Press any key to try again...");
+
+        noecho();
+        char key = getch();
+        if (key == '+'){
+            // Generate password automatically
+            generate_password(password, PASSWORD_LENGTH);
+            printw("\nGenerated Password: %s\n", password);
             refresh();
-            getch();
-            continue;
+        }        
+        else{
+            echo(); // Disable echo for password
+            printw("\nEnter your password: ");
+            if (getnstr(password, sizeof(password) - 1) != OK) {
+                printw("\nError reading password. Press any key to try again...");
+                refresh();
+                getch();
+                continue;
+            }
         }
 
         // Validate password length
@@ -229,14 +279,17 @@ void adding_new_user(struct UserManager* manager) {
 // Modified users_menu to use UserManager
 int users_menu(struct UserManager* manager) {
     int user_id = 0;
+    echo();
     while (!user_id) {
         clear();
-        mvprintw(0, 0, "\nPress the number for the user you want to choose. Press [q] to quit.");
+        mvprintw(0, 0, "\nPress the number for the user you want to choose. Press [q] to quit.");        
         print_users(manager);
         char input[10];
         mvscanw(manager->user_count + 5, 0, "%s", input);
-        if (strcmp(input, "q") == 0)
+        if (strcmp(input, "q") == 0){
             clear();
+            return 0;
+        }
         else {
             int num_input = atoi(input);
             if (num_input > 0 && num_input <= manager->user_count) {
@@ -245,6 +298,7 @@ int users_menu(struct UserManager* manager) {
             }
         }
     }
+    noecho();
     return user_id;
 }
 
@@ -252,9 +306,8 @@ int users_menu(struct UserManager* manager) {
 bool entering_menu(struct UserManager* manager, int selected_index) {
     while (1) {
         clear();
-        printw("Enter the password for the chosen username");
+        printw("Enter the password for the chosen username: ");
         char password[MAX_STRING_LEN];
-        noecho();
         scanw("%s", password);
         echo();
 
@@ -376,12 +429,14 @@ void settings(struct UserManager* manager) {
 
 void login_menu(struct UserManager* manager) {
     clear();
+
     int selected_index = users_menu(manager);
     if (selected_index > 0) {
         if (entering_menu(manager, selected_index)) {
             pre_game_menu(manager);
         }
     }
+
 }
 
 void register_menu(struct UserManager* manager) {
@@ -436,9 +491,9 @@ void pre_game_menu(struct UserManager* manager) {
                 break;
             }
             case '2':
+                //list_saved_games(manager);
                 struct SavedGame saved;
                 if (load_saved_game(manager, &saved)) {
-                    // If successfully loaded, start the game from saved state
                     play_game(manager, &saved.game_map, &saved.character_location, saved.score);
                 }
                 break;

@@ -127,7 +127,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         } else {
             mvprintw(MAP_HEIGHT + 5, 0, "Player: Guest");
         }
-        mvprintw(MAP_HEIGHT + 6, 0, "Controls: Arrow Keys to Move, 'i' - Weapon Inventory, 'e' - General Inventory, 'q' - Quit");
+        mvprintw(MAP_HEIGHT + 6, 0, "Controls: Arrow Keys to Move, 'i' - Weapon Inventory, 'e' - General Inventory, 'q' - Quit g-save");
         refresh();
 
         // Display messages
@@ -157,6 +157,10 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         }
 
         // Handle input
+
+
+
+        
         int key = getch();
         if (key == 'm' || key == 'M') {
             show_map = !show_map;  // Toggle the map visibility flag
@@ -1891,6 +1895,7 @@ bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game) 
 
     clear();
     mvprintw(0, 0, "Enter save name to load: ");
+    list_saved_games(manager);
     refresh();
 
     char save_name[100];
