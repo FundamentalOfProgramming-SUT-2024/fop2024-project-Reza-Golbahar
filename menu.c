@@ -290,13 +290,14 @@ int users_menu(struct UserManager* manager) {
             clear();
             return 0;
         }
-        else {
+        else{   
             int num_input = atoi(input);
             if (num_input > 0 && num_input <= manager->user_count) {
                 user_id = num_input;
                 return user_id;
             }
         }
+        
     }
     noecho();
     return user_id;
@@ -307,19 +308,46 @@ bool entering_menu(struct UserManager* manager, int selected_index) {
     while (1) {
         clear();
         printw("Enter the password for the chosen username: ");
-        char password[MAX_STRING_LEN];
-        scanw("%s", password);
-        echo();
+        printw("\nPress + if you have forgotten your password.");
+        int key = getch();
+        if (key=='+'){
+            printw("\nEnter your Email: ");
+            char email[100];
+            scanw("%s", email);
+            echo();
 
-        if (authenticate_user(manager, selected_index - 1, password)) {
-            printw("Password is correct.\n");
-            refresh();
-            getch();
-            return true;
-        } else {
-            printw("Password is incorrect. Please try again.\n");
-            refresh();
-            getch();
+            if (strcmp(manager->users[selected_index - 1].email, email) == 0) {
+                manager->current_user = &manager->users[selected_index - 1];
+                printw("\nEmail is correct.\n");
+                refresh();
+                getch();
+                return true;
+            }
+
+            else{
+                printw("\nEmail is incorrect. Please try again.\n");
+                refresh();
+                getch();
+            }
+
+        }
+
+        else{
+            printw("\nEnter you password: ");
+            char password[MAX_STRING_LEN];
+            scanw("%s", password);
+            echo();
+
+            if (authenticate_user(manager, selected_index - 1, password)) {
+                printw("\nPassword is correct.\n");
+                refresh();
+                getch();
+                return true;
+            } else {
+                printw("\nPassword is incorrect. Please try again.\n");
+                refresh();
+                getch();
+            }
         }
     }
 }
