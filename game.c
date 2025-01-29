@@ -83,12 +83,12 @@ void play_game(struct UserManager* manager, struct Map* game_map,
 
         if (show_map) {
             // Display the entire map
-            print_full_map(game_map, character_location);
+            print_full_map(game_map, character_location, manager);
         } else {
             // Update visibility based on player's field of view
             update_visibility(game_map, character_location, visible);
             // Display only visible parts of the map
-            print_map(game_map, visible, *character_location);
+            print_map(game_map, visible, *character_location, manager);
         }
         update_password_display();
 
@@ -275,16 +275,32 @@ void play_game(struct UserManager* manager, struct Map* game_map,
 }
 
 
-void print_full_map(struct Map* game_map, struct Point* character_location) {
+void print_full_map(struct Map* game_map, struct Point* character_location, struct UserManager* manager) {
     for (int y = 0; y < MAP_HEIGHT; y++) {
         for (int x = 0; x < MAP_WIDTH; x++) {
             char tile = game_map->grid[y][x];
 
-            // Draw the player
-            if (character_location->x == x && character_location->y == y) {
-                attron(COLOR_PAIR(2)); // Example: Player color
-                mvaddch(y, x, PLAYER_CHAR);
-                attroff(COLOR_PAIR(2));
+             if (character_location->x == x && character_location->y == y) {
+                // Determine the color for the player based on user settings
+                int player_color_pair = 0; // Default color pair (could be defined in your code)
+
+                if (manager->current_user) {
+                    // Check the player's chosen color from settings
+                    if (strcmp(manager->current_user->character_color, "Red") == 0) {
+                        player_color_pair = 9; // Assuming color pair 1 is Red
+                    } else if (strcmp(manager->current_user->character_color, "Blue") == 0) {
+                        player_color_pair = 7; // Assuming color pair 2 is Blue
+                    } else if (strcmp(manager->current_user->character_color, "Green") == 0) {
+                        player_color_pair = 2; // Assuming color pair 3 is Green
+                    } else {
+                        player_color_pair = 20; // Default color is White (pair 4)
+                    }
+                }
+
+                // Apply the chosen color for the player
+                attron(COLOR_PAIR(player_color_pair)); 
+                mvaddch(y, x, PLAYER_CHAR);  // PLAYER_CHAR is your character's symbol
+                attroff(COLOR_PAIR(player_color_pair));
                 continue;
             }
 
@@ -792,7 +808,8 @@ void showCorridorVisibility(struct Map* game_map, int x, int y) {
 
 void print_map(struct Map* game_map,
               bool visible[MAP_HEIGHT][MAP_WIDTH],
-              struct Point character_location) {
+              struct Point character_location,
+              struct UserManager* manager) {
     for (int y = 0; y < MAP_HEIGHT; y++) {
         for (int x = 0; x < MAP_WIDTH; x++) {
 
@@ -801,9 +818,26 @@ void print_map(struct Map* game_map,
 
             // Draw the player
             if (character_location.x == x && character_location.y == y) {
-                attron(COLOR_PAIR(2)); // Example: Player color
-                mvaddch(y, x, PLAYER_CHAR);
-                attroff(COLOR_PAIR(2));
+                // Determine the color for the player based on user settings
+                int player_color_pair = 0; // Default color pair (could be defined in your code)
+
+                if (manager->current_user) {
+                    // Check the player's chosen color from settings
+                    if (strcmp(manager->current_user->character_color, "Red") == 0) {
+                        player_color_pair = 7; // Assuming color pair 1 is Red
+                    } else if (strcmp(manager->current_user->character_color, "Blue") == 0) {
+                        player_color_pair = 9; // Assuming color pair 2 is Blue
+                    } else if (strcmp(manager->current_user->character_color, "Green") == 0) {
+                        player_color_pair = 2; // Assuming color pair 3 is Green
+                    } else {
+                        player_color_pair = 20; // Default color is White (pair 4)
+                    }
+                }
+
+                // Apply the chosen color for the player
+                attron(COLOR_PAIR(player_color_pair)); 
+                mvaddch(y, x, PLAYER_CHAR);  // PLAYER_CHAR is your character's symbol
+                attroff(COLOR_PAIR(player_color_pair));
                 continue;
             }
 

@@ -10,6 +10,13 @@
 #define PASSWORD_LENGTH 12
 #define SPECIAL_CHARACTERS "!@#$%^&*()-_=+[]{}|;:,.<>?/"
 
+struct UserSettings {
+    char character_color[20]; // e.g., "red", "green", etc.
+    int song;
+    int difficulty;
+};
+
+
 void generate_password(char *password, int length);
 bool init_ncurses(void);
 void first_menu(struct UserManager* manager);

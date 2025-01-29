@@ -31,6 +31,11 @@ struct User {
     time_t last_game_time;
 
     struct GameState game_state;  // Add the game state here
+
+    // New settings attributes
+    int difficulty;
+    char character_color[20];
+    int song;
 };
 
 struct UserManager {

@@ -273,7 +273,7 @@ void add_food(struct Map* map);
 bool validate_stair_placement(struct Map* map);
 bool prompt_for_password_door(Room* door_room);
 void place_secret_doors(struct Map* map);
-void print_full_map(struct Map* game_map, struct Point* character_location);
+void print_full_map(struct Map* game_map, struct Point* character_location, struct UserManager* manager);
 
 // Saving/Loading
 void save_current_game(struct UserManager* manager, struct Map* game_map, 
@@ -309,7 +309,7 @@ void draw_messages(struct MessageQueue* queue, int start_y, int start_x);
 void update_password_display();
 
 // Map display
-void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct Point character_location);
+void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct Point character_location, struct UserManager* manager);
 struct Map generate_map(struct Room* previous_room, int current_level, int max_level) ;
 
 // Function declarations for weapons

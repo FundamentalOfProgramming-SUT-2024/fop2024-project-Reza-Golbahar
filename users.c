@@ -119,6 +119,17 @@ void load_users_from_json(struct UserManager* manager) {
             sscanf(line, " \"score\": \"%[^\"]\"", score_str);
             user->score = atoi(score_str);
 
+            // Load new settings
+            fgets(line, sizeof(line), file);  // Skip to difficulty line
+            sscanf(line, " \"difficulty\": %d,", &user->difficulty);
+
+            fgets(line, sizeof(line), file);  // Skip to color line
+            sscanf(line, " \"color\": \"%[^\"]\",", user->character_color);
+
+            fgets(line, sizeof(line), file);  // Skip to song line
+            sscanf(line, " \"song\": %d", &user->song);
+
+            // Store username for future lookups
             strncpy(manager->usernames[manager->user_count], user->username, MAX_STRING_LEN - 1);
             manager->usernames[manager->user_count][MAX_STRING_LEN - 1] = '\0';
             
@@ -141,8 +152,13 @@ void save_users_to_json(struct UserManager* manager) {
         fprintf(file, "    \"username\": \"%s\",\n", manager->users[i].username);
         fprintf(file, "    \"password\": \"%s\",\n", manager->users[i].password);
         fprintf(file, "    \"email\": \"%s\",\n", manager->users[i].email);
-        fprintf(file, "    \"score\": \"%d\"%s\n", manager->users[i].score,
-                i < manager->user_count - 1 ? "," : "");
+        fprintf(file, "    \"score\": \"%d\",\n", manager->users[i].score);
+
+        // Save the new settings
+        fprintf(file, "    \"difficulty\": %d,\n", manager->users[i].difficulty);
+        fprintf(file, "    \"color\": \"%s\",\n", manager->users[i].character_color);
+        fprintf(file, "    \"song\": %d\n", manager->users[i].song);
+
         fprintf(file, "  }%s\n", i < manager->user_count - 1 ? "," : "");
     }
     fprintf(file, "]\n");

@@ -24,14 +24,15 @@ bool init_ncurses(void) {
     use_default_colors();
 
     init_pair(1, COLOR_RED, COLOR_BLACK);     // Locked doors
-    init_pair(2, COLOR_GREEN, COLOR_BLACK);   // Unlocked doors / Player
+    init_pair(2, COLOR_GREEN, COLOR_BLACK);   // Unlocked doors / Player // Do not change Player COlor
     init_pair(3, COLOR_YELLOW, COLOR_BLACK);  // Weapons
     init_pair(4, COLOR_RED, COLOR_BLACK);     // Traps
     init_pair(5, COLOR_YELLOW, COLOR_BLACK);  // Warning messages
     init_pair(6, COLOR_CYAN, COLOR_BLACK);    // Enchant Room
-    init_pair(7, COLOR_RED, COLOR_BLACK);     // Final fail messages
+    init_pair(7, COLOR_RED, COLOR_BLACK);     // Final fail messages  // Do not change Player COlor
     init_pair(8, COLOR_MAGENTA, COLOR_BLACK); // Ancient Key
-    init_pair(9, COLOR_BLUE, COLOR_BLACK);    // Secret Doors
+    init_pair(9, COLOR_BLUE, COLOR_BLACK);    // Secret Doors  // Do not change Player COlor
+    init_pair(20, COLOR_WHITE, COLOR_BLACK);  // Do not change Player COlor
 
     // Initialize color pairs for room themes
     init_pair(COLOR_PAIR_ROOM_NORMAL,    COLOR_WHITE,  COLOR_BLACK); // Normal Rooms
@@ -399,22 +400,31 @@ void first_menu(struct UserManager* manager) {
     }
 }
 
-
 void settings(struct UserManager* manager) {
     clear();
     refresh();
 
-    mvprintw(0, 0, "Settings");
+    // Check if there's a logged-in user
+    if (!manager->current_user) {
+        mvprintw(0, 0, "No user logged in!");
+        refresh();
+        getch();
+        return;
+    }
+
+    // Display current settings
+    mvprintw(0, 0, "Settings for user: %s", manager->current_user->username);
     mvprintw(2, 0, "Current values:");
-    mvprintw(3, 0, "Difficulty = 1");
-    mvprintw(4, 0, "Song = Venom");
-    mvprintw(5, 0, "Color = White");
-    
+    mvprintw(3, 0, "Difficulty = %d", manager->current_user->difficulty);
+    mvprintw(4, 0, "Color = %s", manager->current_user->character_color);
+    mvprintw(5, 0, "Song = %d", manager->current_user->song);
+
     mvprintw(7, 0, "Modify settings? (y/n)");
     refresh();
     
     if (getch() != 'y') return;
 
+    // Variables for new settings
     int difficulty;
     char color[20];
     int song;
@@ -430,30 +440,18 @@ void settings(struct UserManager* manager) {
     scanw("%d", &song);
     noecho();
 
-    // Save settings for current user
-    if (manager->current_user) {
-        FILE* file = fopen("settings.json", "w");
-        if (file) {
-            fprintf(file, "{\n");
-            fprintf(file, "  \"username\": \"%s\",\n", manager->current_user->username);
-            fprintf(file, "  \"difficulty\": %d,\n", difficulty);
-            fprintf(file, "  \"color\": \"%s\",\n", color);
-            fprintf(file, "  \"song\": %d\n", song);
-            fprintf(file, "}\n");
-            fclose(file);
-            
-            mvprintw(13, 0, "Settings saved successfully!");
-        } else {
-            mvprintw(13, 0, "Error saving settings!");
-        }
-    } else {
-        mvprintw(13, 0, "Settings won't be saved for guest users.");
-    }
-    
+    // Update the current user's settings
+    manager->current_user->difficulty = difficulty;
+    strncpy(manager->current_user->character_color, color, sizeof(manager->current_user->character_color) - 1);
+    manager->current_user->song = song;
+
+    // Save updated settings to JSON
+    save_users_to_json(manager);
+
+    mvprintw(13, 0, "Settings saved successfully!");
     refresh();
     getch();
 }
-
 
 void login_menu(struct UserManager* manager) {
     clear();
@@ -511,7 +509,7 @@ void pre_game_menu(struct UserManager* manager) {
                 visible[start_pos.y][start_pos.x] = 1; // Make the starting position visible
 
                 // Print the map with the starting location and visibility
-                print_map(&new_map, visible, start_pos);
+                print_map(&new_map, visible, start_pos, manager);
 
                 // Start the game
                 play_game(manager, &new_map, &start_pos, 0);

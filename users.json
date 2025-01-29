@@ -4,79 +4,62 @@
     "password": "Lord453",
     "email": "s@g.c",
     "score": "0",
-  },
-  {
-    "username": "Reza",
-    "password": "Lord453",
-    "email": "s@g.c",
-    "score": "0",
+    "difficulty": 7,
+    "color": "Green",
+    "song": 3
   },
   {
     "username": "Ali",
     "password": "Lord453",
     "email": "s@z.c",
     "score": "90",
-  },
-  {
-    "username": "rea",
-    "password": "Lord453",
-    "email": "s@g.c",
-    "score": "0",
+    "difficulty": 0,
+    "color": "",
+    "song": 0
   },
   {
     "username": "Reza2",
     "password": "Lord453",
     "email": "s@g.c",
     "score": "0",
-  },
-  {
-    "username": "Reza3",
-    "password": "Lord453",
-    "email": "s@g.c",
-    "score": "0",
+    "difficulty": 0,
+    "color": "",
+    "song": 0
   },
   {
     "username": "Reza4",
     "password": "Lord453",
     "email": "s@g.c",
-    "score": "0"
-  }
-,
-
+    "score": "0",
+    "difficulty": 0,
+    "color": "",
+    "song": 0
+  },
   {
     "username": "qqq",
     "password": "Lord453",
     "email": "q@2.c",
-    "score": "0"
-  },]
-  {
-    "username": "Reza5",
-    "password": "On3<nA50Q_/,",
-    "email": "s@g.c",
-    "score": "0"
-  },]
+    "score": "0",
+    "difficulty": 0,
+    "color": "",
+    "song": 0
+  },
   {
     "username": "Reza6",
     "password": "Lord453",
     "email": "s@g.c",
-    "score": "0"
-  },]
-  {
-    "username": "aaa",
-    "password": "Lord453",
-    "email": "s@g.c",
-    "score": "0"
-  },]
+    "score": "0",
+    "difficulty": 0,
+    "color": "",
+    "song": 0
+  },
   {
     "username": "Reza8",
     "password": "Lord453",
     "email": "s@g.c",
-    "score": "0"
-  },]
-  {
-    "username": "aab",
-    "password": "Lord453",
-    "email": "s@g.c",
-    "score": "0"
+    "score": "0",
+    "difficulty": 5,
+    "color": "Green",
+    "song": 3
   }
 ]
