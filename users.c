@@ -108,18 +108,25 @@ void load_users_from_json(struct UserManager* manager) {
     while (fgets(line, sizeof(line), file)) {
         if (strstr(line, "\"username\":") != NULL) {
             struct User* user = &manager->users[manager->user_count];
-            
+
+            // Parse the JSON data for each user
             sscanf(line, " \"username\": \"%[^\"]\",", user->username);
             fgets(line, sizeof(line), file);
             sscanf(line, " \"password\": \"%[^\"]\",", user->password);
             fgets(line, sizeof(line), file);
             sscanf(line, " \"email\": \"%[^\"]\",", user->email);
-            fgets(line, sizeof(line), file);
+
+            // Parse score and gold_collected
             char score_str[10];
             sscanf(line, " \"score\": \"%[^\"]\"", score_str);
             user->score = atoi(score_str);
 
-            // Load new settings
+            fgets(line, sizeof(line), file);  // Skip to gold_collected line
+            char gold_str[10];
+            sscanf(line, " \"gold_collected\": \"%[^\"]\"", gold_str);
+            user->gold = atoi(gold_str);
+
+            // Load other settings
             fgets(line, sizeof(line), file);  // Skip to difficulty line
             sscanf(line, " \"difficulty\": %d,", &user->difficulty);
 
@@ -127,12 +134,18 @@ void load_users_from_json(struct UserManager* manager) {
             sscanf(line, " \"color\": \"%[^\"]\",", user->character_color);
 
             fgets(line, sizeof(line), file);  // Skip to song line
-            sscanf(line, " \"song\": %d", &user->song);
+            sscanf(line, " \"song\": %d,", &user->song);
+
+            fgets(line, sizeof(line), file);  // Skip to games_played line
+            sscanf(line, " \"games_played\": %d,", &user->games_completed);
+
+            fgets(line, sizeof(line), file);  // Skip to days_since_first_game line
+            sscanf(line, " \"days_since_first_game\": %d", &user->days_since_first_game);
 
             // Store username for future lookups
             strncpy(manager->usernames[manager->user_count], user->username, MAX_STRING_LEN - 1);
             manager->usernames[manager->user_count][MAX_STRING_LEN - 1] = '\0';
-            
+
             manager->user_count++;
         }
     }
@@ -148,23 +161,35 @@ void save_users_to_json(struct UserManager* manager) {
 
     fprintf(file, "[\n");
     for (int i = 0; i < manager->user_count; i++) {
-        fprintf(file, "  {\n");
-        fprintf(file, "    \"username\": \"%s\",\n", manager->users[i].username);
-        fprintf(file, "    \"password\": \"%s\",\n", manager->users[i].password);
-        fprintf(file, "    \"email\": \"%s\",\n", manager->users[i].email);
-        fprintf(file, "    \"score\": \"%d\",\n", manager->users[i].score);
+        struct User* user = &manager->users[i];
 
-        // Save the new settings
-        fprintf(file, "    \"difficulty\": %d,\n", manager->users[i].difficulty);
-        fprintf(file, "    \"color\": \"%s\",\n", manager->users[i].character_color);
-        fprintf(file, "    \"song\": %d\n", manager->users[i].song);
+        // Update score and gold_collected before saving
+        int total_score = user->score;  // Assuming current score is what needs to be saved
+        int total_gold = user->gold;  // Gold collected from the game
+
+        // If it's the first time saving, calculate days_since_first_game
+        if (user->games_completed == 0) {
+            user->days_since_first_game = (int)((time(NULL) - user->first_game_time) / (24 * 3600));
+        }
+
+        // Save the user data to the file
+        fprintf(file, "  {\n");
+        fprintf(file, "    \"username\": \"%s\",\n", user->username);
+        fprintf(file, "    \"password\": \"%s\",\n", user->password);
+        fprintf(file, "    \"email\": \"%s\",\n", user->email);
+        fprintf(file, "    \"score\": \"%d\",\n", total_score); // Save the updated score
+        fprintf(file, "    \"gold_collected\": \"%d\",\n", total_gold); // Save gold collected
+        fprintf(file, "    \"difficulty\": %d,\n", user->difficulty);
+        fprintf(file, "    \"color\": \"%s\",\n", user->character_color);
+        fprintf(file, "    \"song\": %d,\n", user->song);
+        fprintf(file, "    \"games_played\": %d,\n", user->games_completed);
+        fprintf(file, "    \"days_since_first_game\": %d\n", user->days_since_first_game);  // Save the days since first game
 
         fprintf(file, "  }%s\n", i < manager->user_count - 1 ? "," : "");
     }
     fprintf(file, "]\n");
     fclose(file);
 }
-
 
 bool authenticate_user(struct UserManager* manager, int index, const char* password) {
     if (index < 0 || index >= manager->user_count) {
@@ -268,11 +293,12 @@ void print_scoreboard(struct UserManager* manager) {
             // Set appropriate color and style
             if (i < 3) {
                 // Top 3 players get special colors and medals
-                attron(COLOR_PAIR(i + 1) | A_BOLD);
+                attron(COLOR_PAIR(i + 1) | A_BOLD | A_ITALIC);
                 //const char* medals[] = {"🏆", "🥈", "🥉"};
                 const char* titles[] = {"GOAT", "Legend", "Champion"};
                 //mvwprintw(row, 0, "%s %d", medals[i], i + 1);
                 mvprintw(row, 70, "%s", titles[i]);
+                attroff(COLOR_PAIR(i + 1) | A_BOLD | A_ITALIC);
             } else {
                 // Normal ranking
                 mvprintw(row, 0, "%d", i + 1);
@@ -282,8 +308,11 @@ void print_scoreboard(struct UserManager* manager) {
             if (manager->current_user && 
                 strcmp(user->username, manager->current_user->username) == 0) {
                 attron(COLOR_PAIR(4) | A_BOLD);
-                mvprintw(row, 6, "►");
+                mvprintw(row, 0, "You****");
             }
+            
+            if (i<3 && strcmp(user->username, manager->current_user->username) != 0)
+                attron(COLOR_PAIR(i + 1) | A_BOLD | A_ITALIC);
 
             // Print user information
             mvprintw(row, 8,  "%s", user->username);
@@ -293,7 +322,7 @@ void print_scoreboard(struct UserManager* manager) {
             mvprintw(row, 55, "%d days", experience_days);
 
             // Reset attributes
-            attroff(COLOR_PAIR(1) | COLOR_PAIR(2) | COLOR_PAIR(3) | COLOR_PAIR(4) | A_BOLD);
+            attroff(COLOR_PAIR(1) | COLOR_PAIR(2) | COLOR_PAIR(3) | COLOR_PAIR(4) | A_BOLD | A_ITALIC);
         }
 
 

@@ -267,6 +267,8 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                 break;
 
             case 'q':
+                save_current_game(manager, game_map, character_location, score, current_level);
+
                 game_running = false;
                 break;
         }
@@ -1860,6 +1862,8 @@ bool create_safe_filename(char* dest, size_t dest_size, const char* username, co
 
 void save_current_game(struct UserManager* manager, struct Map* game_map, 
                       struct Point* character_location, int score, int current_level) {
+    save_users_to_json(manager);
+    //load_users_from_json(manager);
     if (!manager->current_user) {
         mvprintw(0, 0, "Cannot save game as guest user.");
         refresh();

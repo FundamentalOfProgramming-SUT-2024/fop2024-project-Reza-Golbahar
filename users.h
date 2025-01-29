@@ -29,6 +29,7 @@ struct User {
     int games_completed;
     time_t first_game_time;
     time_t last_game_time;
+    int days_since_first_game; // New field
 
     struct GameState game_state;  // Add the game state here
 

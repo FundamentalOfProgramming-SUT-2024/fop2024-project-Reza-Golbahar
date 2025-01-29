@@ -4,62 +4,83 @@
     "password": "Lord453",
     "email": "s@g.c",
     "score": "0",
-    "difficulty": 7,
-    "color": "Green",
-    "song": 3
+    "gold_collected": "0",
+    "difficulty": 0,
+    "color": "",
+    "song": 0,
+    "games_played": 0,
+    "days_since_first_game": 20117
   },
   {
     "username": "Ali",
     "password": "Lord453",
     "email": "s@z.c",
-    "score": "90",
+    "score": "0",
+    "gold_collected": "0",
     "difficulty": 0,
     "color": "",
-    "song": 0
+    "song": 0,
+    "games_played": 0,
+    "days_since_first_game": 20117
   },
   {
     "username": "Reza2",
     "password": "Lord453",
     "email": "s@g.c",
     "score": "0",
+    "gold_collected": "0",
     "difficulty": 0,
     "color": "",
-    "song": 0
+    "song": 0,
+    "games_played": 0,
+    "days_since_first_game": 20117
   },
   {
     "username": "Reza4",
     "password": "Lord453",
     "email": "s@g.c",
     "score": "0",
+    "gold_collected": "0",
     "difficulty": 0,
     "color": "",
-    "song": 0
+    "song": 0,
+    "games_played": 0,
+    "days_since_first_game": 20117
   },
   {
     "username": "qqq",
     "password": "Lord453",
     "email": "q@2.c",
     "score": "0",
+    "gold_collected": "0",
     "difficulty": 0,
     "color": "",
-    "song": 0
+    "song": 0,
+    "games_played": 0,
+    "days_since_first_game": 20117
   },
   {
     "username": "Reza6",
     "password": "Lord453",
     "email": "s@g.c",
     "score": "0",
+    "gold_collected": "0",
     "difficulty": 0,
     "color": "",
-    "song": 0
+    "song": 0,
+    "games_played": 0,
+    "days_since_first_game": 20117
   },
   {
     "username": "Reza8",
     "password": "Lord453",
     "email": "s@g.c",
     "score": "0",
-    "difficulty": 5,
-    "color": "Green",
-    "song": 3
+    "gold_collected": "0",
+    "difficulty": 0,
+    "color": "",
+    "song": 0,
+    "games_played": 0,
+    "days_since_first_game": 20117
   }
 ]

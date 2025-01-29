@@ -154,7 +154,7 @@ void adding_new_user(struct UserManager* manager) {
         char key = getch();
         if (key == '+'){
             // Generate password automatically
-            generate_password(password, PASSWORD_LENGTH);
+            generate_password(password, sizeof(password));
             printw("\nGenerated Password: %s\n", password);
             refresh();
         }        
@@ -218,52 +218,39 @@ void adding_new_user(struct UserManager* manager) {
         new_user->password[MAX_STRING_LEN - 1] = '\0';
         strncpy(new_user->email, email, MAX_STRING_LEN - 1);
         new_user->email[MAX_STRING_LEN - 1] = '\0';
+
+        // Initialize other user details
         new_user->score = 0;
+        new_user->games_completed = 0;
+        new_user->gold = 0;
+        new_user->first_game_time = time(NULL);
+        new_user->last_game_time = time(NULL);
+        new_user->difficulty = 1;
+        new_user->song = 1;
+        strcpy(new_user->character_color, "White");
 
         // Store in usernames array
         strncpy(manager->usernames[manager->user_count], username, MAX_STRING_LEN - 1);
         manager->usernames[manager->user_count][MAX_STRING_LEN - 1] = '\0';
-        
-        // Update JSON file
-        FILE* file = fopen("users.json", "r");
-        char* content = NULL;
-        long file_size = 0;
 
-        if (file != NULL) {
-            fseek(file, 0, SEEK_END);
-            file_size = ftell(file);
-            fseek(file, 0, SEEK_SET);
-            content = malloc(file_size + 1);
-            if (content) {
-                fread(content, 1, file_size, file);
-                content[file_size] = '\0';
-            }
-            fclose(file);
-        }
-
-        file = fopen("users.json", "w");
+        // Write user data to JSON
+        FILE* file = fopen("users.json", "a"); // Open in append mode
         if (file) {
-            if (manager->user_count == 0) {
-                fprintf(file, "[\n");
-            } else {
-                if (content) {
-                    content[strlen(content) - 2] = ',';  // Replace the closing bracket with a comma
-                    fprintf(file, "%s", content);
-                    fprintf(file, "\n");
-                }
+            if (manager->user_count > 0) {
+                fprintf(file, ",\n");
             }
-
             fprintf(file, "  {\n");
             fprintf(file, "    \"username\": \"%s\",\n", username);
             fprintf(file, "    \"password\": \"%s\",\n", password);
             fprintf(file, "    \"email\": \"%s\",\n", email);
-            fprintf(file, "    \"score\": \"0\"\n");
-            fprintf(file, "  }\n]");
+            fprintf(file, "    \"score\": \"0\",\n");
+            fprintf(file, "    \"gold_collected\": \"0\",\n");
+            fprintf(file, "    \"difficulty\": 1,\n");
+            fprintf(file, "    \"color\": \"White\",\n");
+            fprintf(file, "    \"games_played\": 0,\n");
+            fprintf(file, "    \"days_since_first_game\": 0\n");
+            fprintf(file, "  }\n");
             fclose(file);
-        }
-
-        if (content) {
-            free(content);
         }
 
         manager->user_count++;
@@ -484,16 +471,17 @@ void pre_game_menu(struct UserManager* manager) {
         mvprintw(3, 0, "2. Load Game");
         mvprintw(4, 0, "3. Scoreboard");
         mvprintw(5, 0, "4. Settings");
-        mvprintw(6, 0, "5. Back to Main Menu");
+        mvprintw(6, 0, "5. Player Profile");
+        mvprintw(7, 0, "6. Back to Main Menu");
         
         if (manager->current_user) {
-            mvprintw(8, 0, "Logged in as: %s", manager->current_user->username);
+            mvprintw(9, 0, "Logged in as: %s", manager->current_user->username);
         } else {
-            mvprintw(8, 0, "Playing as Guest");
+            mvprintw(9, 0, "Playing as Guest");
         }
         
-        mvprintw(9, 0, "Current Date and Time (UTC): 2025-01-04 20:00:58");
-        mvprintw(11, 0, "Choose an option (1-5): ");
+        mvprintw(10, 0, "Current Date and Time (UTC): 2025-01-04 20:00:58");
+        mvprintw(12, 0, "Choose an option (1-5): ");
         refresh();
 
         int choice = getch();
@@ -529,6 +517,17 @@ void pre_game_menu(struct UserManager* manager) {
                 settings(manager);
                 break;
             case '5':
+                if (manager->current_user) {
+                    // Call the print_user_profile function to display the profile of the current user
+                    int user_index = manager->current_user - manager->users; // Calculate the user index
+                    print_user_profile(manager, user_index);
+                } else {
+                    mvprintw(13, 0, "No user logged in. Press any key to continue...");
+                    refresh();
+                    getch();
+                }
+                break;
+            case '6':
                 running = false;
                 break;
             default:
@@ -539,3 +538,50 @@ void pre_game_menu(struct UserManager* manager) {
         }
     }
 }
+
+void print_user_profile(struct UserManager *manager, int user_index) {
+    clear(); // Clear the screen before displaying the profile
+
+    struct User *user = &manager->users[user_index];
+
+    printw("User Profile:\n\n");
+
+    // Display username
+    printw("Username: %s\n", user->username);
+    
+    // Display email
+    printw("Email: %s\n", user->email);
+    
+    // Display score
+    printw("Score: %d\n", user->score);
+    
+    // Display number of games completed
+    printw("Games Completed: %d\n", user->games_completed);
+    
+    // Display gold collected
+    printw("Gold Collected: %d\n", user->gold);
+    
+    // Display difficulty
+    printw("Difficulty: %d\n", user->difficulty);
+    
+    // Display song
+    printw("Song: %d\n", user->song);
+    
+    // Display character color
+    printw("Character Color: %s\n", user->character_color);
+    
+    // Display days since first game
+    time_t now = time(NULL);
+    double seconds_since_first_game = difftime(now, user->first_game_time);
+    int days_since_first_game = seconds_since_first_game / (60 * 60 * 24);
+    printw("Days Since First Game: %d\n", days_since_first_game);
+
+    // Display last game time
+    struct tm *last_game_time = localtime(&user->last_game_time);
+    printw("Last Game Time: %s", asctime(last_game_time));
+
+    printw("\nPress any key to return...");
+    refresh();
+    getch(); // Wait for user to press any key
+}
+
