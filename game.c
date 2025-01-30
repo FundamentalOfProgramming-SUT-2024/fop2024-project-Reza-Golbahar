@@ -109,7 +109,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
 
         //mvprintw(10, 10, "a");
         // Update enemies' actions
-        update_enemies(game_map, &player, &hitpoints);
+        update_enemies(game_map, &player, &hitpoints, &message_queue);
         
         // Show game info
         if (player.equipped_weapon != -1) {
@@ -254,13 +254,13 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             case 'a':
             case 'A':
                 // Attack using the equipped weapon
-                use_weapon(&player);
+                use_weapon(&player, game_map, &message_queue);
                 break;
 
             case 'i':
             case 'I':
                 // Open the weapon inventory menu
-                open_weapon_inventory_menu(&player, game_map);
+                open_weapon_inventory_menu(&player, game_map, &message_queue);
                 break;
 
             case 's':
@@ -2144,27 +2144,7 @@ void equip_weapon(Player* player, int weapon_index) {
     getch();
 }
 
-void use_weapon(Player* player) {
-    if (player->equipped_weapon == -1) {
-        mvprintw(16, 80, "No weapon equipped!");
-        refresh();
-        getch();
-        return;
-    }
-
-    Weapon* weapon = &player->weapons[player->equipped_weapon];
-    char message[100];
-    snprintf(message, sizeof(message), "You use the %s to deal %d damage.", weapon->name, weapon->damage);
-    mvprintw(16, 80, "%s", message);
-    refresh();
-    getch();
-
-    // Implement actual attack logic here (e.g., targeting an enemy)
-    // Example:
-    // attack_enemy(player->equipped_weapon->damage);
-}
-
-void open_weapon_inventory_menu(Player* player, struct Map* map) {
+void open_weapon_inventory_menu(Player* player, struct Map* map, struct MessageQueue* message_queue) {
     bool menu_open = true;
 
     while (menu_open) {
@@ -2232,7 +2212,7 @@ void open_weapon_inventory_menu(Player* player, struct Map* map) {
         }
         else if (command == 'u') {
             // Use equipped weapon
-            use_weapon(player);
+            use_weapon(player, map, message_queue);
         }
         else if (command == 'd') {
             // Drop weapon
@@ -2256,7 +2236,7 @@ void open_weapon_inventory_menu(Player* player, struct Map* map) {
                     // Notify the player
                     char message[100];
                     snprintf(message, sizeof(message), "You dropped a %s at your current location.", player->weapons[weapon_num].name);
-                    mvprintw(12, 0, "%s", message);
+                    add_game_message(message_queue, message, 2); // Green color
                     refresh();
                     getch();
 
@@ -2601,19 +2581,43 @@ void add_enemies(struct Map* map, int current_level) {
         
         // Check if the tile is empty (floor)
         if (map->grid[y][x] == FLOOR) {
-            // Initialize the enemy
+            // Initialize the enemy with random type
             Enemy enemy;
-            enemy.type = ENEMY_FIRE_BREATHING_MONSTER;
+            int enemy_type_rand = rand() % 4; // 4 new enemy types
+
+            switch(enemy_type_rand) {
+                case 0:
+                    enemy.type = ENEMY_DEMON;
+                    enemy.hp = 5;
+                    break;
+                case 1:
+                    enemy.type = ENEMY_GIANT;
+                    enemy.hp = 15;
+                    break;
+                case 2:
+                    enemy.type = ENEMY_SNAKE;
+                    enemy.hp = 20;
+                    break;
+                case 3:
+                    enemy.type = ENEMY_UNDEAD;
+                    enemy.hp = 30;
+                    break;
+                default:
+                    enemy.type = ENEMY_FIRE_BREATHING_MONSTER;
+                    enemy.hp = 10;
+            }
+
             enemy.position.x = x;
             enemy.position.y = y;
-            enemy.hp = ENEMY_HP_FIRE_MONSTER;
             enemy.active = false; // Initially inactive
-            
+            enemy.chasing = false;
+            enemy.adjacent_attack = false;
+
             // Add enemy to the map
             map->enemies[map->enemy_count++] = enemy;
             
             // Represent the enemy on the map
-            map->grid[y][x] = ENEMY_FIRE_MONSTER;
+            map->grid[y][x] = enemy.type; // 'D', 'G', 'S', 'U', etc.
         }
     }
 }
@@ -2625,10 +2629,34 @@ void render_enemies(struct Map* map) {
         // Only render active enemies
         if (enemy->active) {
             // Check if the enemy is still in the map
-            if (map->grid[enemy->position.y][enemy->position.x] == ENEMY_FIRE_MONSTER) {
-                attron(COLOR_PAIR(16)); // Enemy color
-                mvaddch(enemy->position.y, enemy->position.x, ENEMY_FIRE_MONSTER);
-                attroff(COLOR_PAIR(16));
+            char symbol = enemy->type;
+            if (symbol == ENEMY_FIRE_MONSTER || symbol == ENEMY_DEMON || symbol == ENEMY_GIANT ||
+                symbol == ENEMY_SNAKE || symbol == ENEMY_UNDEAD) {
+                
+                // Determine color based on enemy type
+                int color_pair = 16; // Default enemy color
+                switch(enemy->type) {
+                    case ENEMY_DEMON:
+                        color_pair = 17; // Define in your color initialization
+                        break;
+                    case ENEMY_GIANT:
+                        color_pair = 18;
+                        break;
+                    case ENEMY_SNAKE:
+                        color_pair = 19;
+                        break;
+                    case ENEMY_UNDEAD:
+                        color_pair = 20;
+                        break;
+                    // Add cases as needed
+                    default:
+                        color_pair = 16;
+                        break;
+                }
+
+                attron(COLOR_PAIR(color_pair));
+                mvaddch(enemy->position.y, enemy->position.x, symbol);
+                attroff(COLOR_PAIR(color_pair));
             }
         }
     }
@@ -2638,18 +2666,34 @@ bool is_enemy_in_same_room(Player* player, Enemy* enemy, struct Map* map) {
     return (find_room_by_position(map, player->location.x, player->location.y) == find_room_by_position(map, enemy->position.x, enemy->position.y));
 }
 
-void update_enemies(struct Map* map, Player* player, int* hitpoints) {
+void update_enemies(struct Map* map, Player* player, int* hitpoints, struct MessageQueue* message_queue) {
     for (int i = 0; i < map->enemy_count; i++) {
         Enemy* enemy = &map->enemies[i];
         if (!enemy->active) continue;
 
-        if (is_enemy_in_same_room(player, enemy, map)) {
-            move_enemy_towards(player, enemy, map);
+        // Activate enemy if in the same room
+        if (!enemy->chasing && is_enemy_in_same_room(player, enemy, map)) {
+            enemy->active = true;
+            enemy->chasing = true;
+            add_game_message(message_queue, "An enemy has spotted you!", 16); // Adjust color pair as needed
+        }
+
+        // Handle chasing behavior
+        if (enemy->chasing) {
+            move_enemy_towards(player, enemy, map, message_queue);
+        }
+
+        // Check for adjacent enemy and deal damage
+        if (is_adjacent(player->location, enemy->position)) {
+            *hitpoints -= enemy->hp;
+            char damage_msg[100];
+            snprintf(damage_msg, sizeof(damage_msg), "An enemy attacked you! Damage: %d", enemy->hp);
+            add_game_message(message_queue, damage_msg, 7);  // Red color
         }
     }
 }
 
-void move_enemy_towards(Player* player, Enemy* enemy, struct Map* map) {
+void move_enemy_towards(Player* player, Enemy* enemy, struct Map* map, struct MessageQueue* message_queue) {
     int dx = player->location.x - enemy->position.x;
     int dy = player->location.y - enemy->position.y;
 
@@ -2672,7 +2716,7 @@ void move_enemy_towards(Player* player, Enemy* enemy, struct Map* map) {
         // Check if another enemy is already on the target tile
         bool occupied = false;
         for (int i = 0; i < map->enemy_count; i++) {
-            if (i == enemy - map->enemies) continue; // Skip self
+            if (i == (enemy - map->enemies)) continue; // Skip self
             if (map->enemies[i].position.x == new_x && 
                 map->enemies[i].position.y == new_y) {
                 occupied = true;
@@ -2685,7 +2729,7 @@ void move_enemy_towards(Player* player, Enemy* enemy, struct Map* map) {
             map->grid[enemy->position.y][enemy->position.x] = FLOOR; // Remove enemy from current position
             enemy->position.x = new_x;
             enemy->position.y = new_y;
-            map->grid[new_y][new_x] = ENEMY_FIRE_MONSTER; // Place enemy at new position
+            map->grid[new_y][new_x] = enemy->type; // Place enemy at new position
         }
     }
 }
@@ -2781,3 +2825,252 @@ void combat(Player* player, Enemy* enemy, struct Map* map, int* hitpoints) {
         refresh();
     }
 }
+
+// Function to check if two points are adjacent (including diagonal)
+bool is_adjacent(struct Point p1, struct Point p2) {
+    return (abs(p1.x - p2.x) <= 1 && abs(p1.y - p2.y) <= 1);
+}
+
+// Function to check if the tile is valid for weapon interaction
+bool is_valid_tile(int x, int y) {
+    return (x >= 0 && x < MAP_WIDTH && y >= 0 && y < MAP_HEIGHT);
+}
+
+// Function to deal damage to enemy at specific tile location
+void deal_damage_to_enemy(struct Map* map, int x, int y, int damage, struct MessageQueue* message_queue) {
+    for (int i = 0; i < map->enemy_count; i++) {
+        Enemy* enemy = &map->enemies[i];
+        if (enemy->position.x == x && enemy->position.y == y) {
+            enemy->hp -= damage;
+            if (enemy->hp <= 0) {
+                // Remove enemy from the map
+                map->grid[enemy->position.y][enemy->position.x] = FLOOR;
+                // Remove enemy from the enemy list
+                for (int j = i; j < map->enemy_count - 1; j++) {
+                    map->enemies[j] = map->enemies[j + 1];
+                }
+                map->enemy_count--;
+                add_game_message(message_queue, "You defeated an enemy!", 2); // Green color
+                break; // Exit the loop after removing the enemy
+            }
+        }
+    }
+}
+
+// Function to throw a dagger
+void throw_dagger(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue) {
+    // Prompt user for direction
+    clear();
+    mvprintw(0, 0, "Throw Dagger in which direction? (w/a/s/d): ");
+    refresh();
+
+    int direction = getch();
+    int dx = 0, dy = 0;
+
+    switch (tolower(direction)) {
+        case 'w': dy = -1; break; // Up
+        case 's': dy = 1; break;  // Down
+        case 'a': dx = -1; break; // Left
+        case 'd': dx = 1; break;  // Right
+        default:
+            add_game_message(message_queue, "Invalid direction!", 7); // Red color
+            return;
+    }
+
+    int new_x = player->location.x;
+    int new_y = player->location.y;
+
+    for (int i = 0; i < 5; i++) { // Dagger travels 5 tiles
+        new_x += dx;
+        new_y += dy;
+
+        if (!is_valid_tile(new_x, new_y)) break;
+
+        char target_tile = map->grid[new_y][new_x];
+
+        if (target_tile == WALL_HORIZONTAL || target_tile == WALL_VERTICAL) {
+            // Dagger hits a wall and stops
+            break;
+        }
+
+        // Check if the tile has an enemy
+        deal_damage_to_enemy(map, new_x, new_y, weapon->damage, message_queue);
+    }
+
+    // Decrease dagger count
+    weapon->quantity -= 1;
+    if (weapon->quantity < 0) weapon->quantity = 0;
+
+    add_game_message(message_queue, "You threw a Dagger.", 2); // Green color
+}
+
+// Function to throw a magic wand (stun enemy)
+void throw_magic_wand(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue) {
+    // Prompt user for direction
+    clear();
+    mvprintw(0, 0, "Throw Magic Wand in which direction? (w/a/s/d): ");
+    refresh();
+
+    int direction = getch();
+    int dx = 0, dy = 0;
+
+    switch (tolower(direction)) {
+        case 'w': dy = -1; break; // Up
+        case 's': dy = 1; break;  // Down
+        case 'a': dx = -1; break; // Left
+        case 'd': dx = 1; break;  // Right
+        default:
+            add_game_message(message_queue, "Invalid direction!", 7); // Red color
+            return;
+    }
+
+    int new_x = player->location.x;
+    int new_y = player->location.y;
+
+    for (int i = 0; i < 10; i++) { // Magic Wand travels 10 tiles
+        new_x += dx;
+        new_y += dy;
+
+        if (!is_valid_tile(new_x, new_y)) break;
+
+        char target_tile = map->grid[new_y][new_x];
+
+        if (target_tile == WALL_HORIZONTAL || target_tile == WALL_VERTICAL) {
+            // Magic Wand hits a wall and stops
+            break;
+        }
+
+        // Check if the tile has an enemy
+        stun_enemy(map, new_x, new_y, weapon->damage, message_queue);
+    }
+
+    // Decrease magic wand count
+    weapon->quantity -= 1;
+    if (weapon->quantity < 0) weapon->quantity = 0;
+
+    add_game_message(message_queue, "You threw a Magic Wand.", 2); // Green color
+}
+
+// Function to stun an enemy
+void stun_enemy(struct Map* map, int x, int y, int damage, struct MessageQueue* message_queue) {
+    for (int i = 0; i < map->enemy_count; i++) {
+        Enemy* enemy = &map->enemies[i];
+        if (enemy->position.x == x && enemy->position.y == y) {
+            enemy->active = false;  // Stunned, cannot move
+            add_game_message(message_queue, "The enemy is stunned and cannot move!", 2);  // Green color
+            break; // Exit the loop after stunning the enemy
+        }
+    }
+}
+
+// Function to throw arrows (similar to dagger)
+void throw_arrow(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue) {
+    // Prompt user for direction
+    clear();
+    mvprintw(0, 0, "Throw Arrow in which direction? (w/a/s/d): ");
+    refresh();
+
+    int direction = getch();
+    int dx = 0, dy = 0;
+
+    switch (tolower(direction)) {
+        case 'w': dy = -1; break; // Up
+        case 's': dy = 1; break;  // Down
+        case 'a': dx = -1; break; // Left
+        case 'd': dx = 1; break;  // Right
+        default:
+            add_game_message(message_queue, "Invalid direction!", 7); // Red color
+            return;
+    }
+
+    int new_x = player->location.x;
+    int new_y = player->location.y;
+
+    for (int i = 0; i < 5; i++) { // Arrow travels 5 tiles
+        new_x += dx;
+        new_y += dy;
+
+        if (!is_valid_tile(new_x, new_y)) break;
+
+        char target_tile = map->grid[new_y][new_x];
+
+        if (target_tile == WALL_HORIZONTAL || target_tile == WALL_VERTICAL) {
+            // Arrow hits a wall and stops
+            break;
+        }
+
+        // Check if the tile has an enemy
+        deal_damage_to_enemy(map, new_x, new_y, weapon->damage, message_queue);
+    }
+
+    // Decrease arrow count
+    weapon->quantity -= 1;
+    if (weapon->quantity < 0) weapon->quantity = 0;
+
+    add_game_message(message_queue, "You threw an Arrow.", 2); // Green color
+}
+
+void use_weapon(Player* player, struct Map* map, struct MessageQueue* message_queue) {
+    if (player->equipped_weapon == -1) {
+        mvprintw(16, 80, "No weapon equipped!");
+        refresh();
+        getch();
+        return;
+    }
+
+    Weapon* weapon = &player->weapons[player->equipped_weapon];
+    switch (weapon->symbol) {
+        case WEAPON_MACE:
+            // Damage to 8 adjacent tiles
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    int new_x = player->location.x + dx;
+                    int new_y = player->location.y + dy;
+                    if (is_valid_tile(new_x, new_y)) {
+                        // Apply damage to enemies in range
+                        deal_damage_to_enemy(map, new_x, new_y, weapon->damage, message_queue);
+                    }
+                }
+            }
+            add_game_message(message_queue, "You used the Mace!", 2); // Green color
+            break;
+
+        case WEAPON_DAGGER:
+            // Thrown in a direction, travels 5 tiles
+            throw_dagger(player, weapon, map, message_queue);
+            break;
+
+        case WEAPON_MAGIC_WAND:
+            // Thrown in a direction, travels 10 tiles, stuns enemies
+            throw_magic_wand(player, weapon, map, message_queue);
+            break;
+
+        case WEAPON_ARROW:
+            // Thrown in a direction, travels 5 tiles
+            throw_arrow(player, weapon, map, message_queue);
+            break;
+
+        case WEAPON_SWORD:
+            // Damage to 8 adjacent tiles
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    int new_x = player->location.x + dx;
+                    int new_y = player->location.y + dy;
+                    if (is_valid_tile(new_x, new_y)) {
+                        // Apply damage to enemies in range
+                        deal_damage_to_enemy(map, new_x, new_y, weapon->damage, message_queue);
+                    }
+                }
+            }
+            add_game_message(message_queue, "You swung the Sword!", 2); // Green color
+            break;
+
+        default:
+            mvprintw(16, 80, "Unknown weapon type!");
+            refresh();
+            getch();
+            break;
+    }
+}
+
+

@@ -32,6 +32,13 @@ bool init_ncurses(void) {
     init_pair(7, COLOR_RED, COLOR_BLACK);     // Final fail messages  // Do not change Player COlor
     init_pair(8, COLOR_MAGENTA, COLOR_BLACK); // Ancient Key
     init_pair(9, COLOR_BLUE, COLOR_BLACK);    // Secret Doors  // Do not change Player COlor
+
+    init_pair(16, COLOR_RED, COLOR_BLACK);    // Default enemy
+    init_pair(17, COLOR_MAGENTA, COLOR_BLACK); // Demon
+    init_pair(18, COLOR_YELLOW, COLOR_BLACK);  // Giant
+    init_pair(19, COLOR_GREEN, COLOR_BLACK);   // Snake
+    init_pair(21, COLOR_CYAN, COLOR_BLACK);    // Undead
+
     init_pair(20, COLOR_WHITE, COLOR_BLACK);  // Do not change Player COlor
 
     // Initialize color pairs for room themes
@@ -43,8 +50,6 @@ bool init_ncurses(void) {
     init_pair(COLOR_PAIR_HEALTH,  COLOR_MAGENTA, COLOR_BLACK); // Health Spell
     init_pair(COLOR_PAIR_SPEED,   COLOR_CYAN,     COLOR_BLACK); // Speed Spell
     init_pair(COLOR_PAIR_DAMAGE,  COLOR_RED,      COLOR_BLACK); // Damage Spell
-
-    init_pair(16, COLOR_RED, COLOR_BLACK);    // Enemies
 
 
     return true;

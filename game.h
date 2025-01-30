@@ -92,24 +92,30 @@
 #define MAX_MESSAGES        5
 #define MESSAGE_LENGTH      100
 
-// Enemy Types
-typedef enum {
-    ENEMY_FIRE_BREATHING_MONSTER,
-    // Future enemy types can be added here
-} EnemyType;
 
 struct Point {
     int x;
     int y;
 };
 
+// Enemy Types
+typedef enum {
+    ENEMY_FIRE_BREATHING_MONSTER,
+    ENEMY_DEMON,
+    ENEMY_GIANT,
+    ENEMY_SNAKE,
+    ENEMY_UNDEAD,
+    // Future enemy types can be added here
+} EnemyType;
 
-// Enemy Structure
+
 typedef struct Enemy {
     EnemyType type;         // Type of the enemy
     struct Point position;  // Current position on the map
     int hp;                 // Hit Points
     bool active;            // Whether the enemy is active (chasing the player)
+    bool chasing;           // Flag to indicate if the enemy is chasing the player
+    bool adjacent_attack;   // Flag to check if the player is adjacent to the enemy
 } Enemy;
 
 typedef struct Trap {
@@ -175,7 +181,7 @@ typedef struct Weapon {
     char symbol;            // '1' to '5'
     char name[20];          // Name of the weapon
     int damage;             // Damage value
-    // Add more attributes as needed (e.g., durability, special effects)
+    int quantity;           // Quantity of weapon, for throwable or reusable ones
 } Weapon;
 
 // Spell Types
@@ -315,12 +321,12 @@ struct Map generate_map(struct Room* previous_room, int current_level, int max_l
 // Function declarations for weapons
 void add_weapons(struct Map* map);
 void handle_weapon_pickup(Player* player, struct Map* map, struct Point new_location, struct MessageQueue* message_queue);
-void open_weapon_inventory_menu(Player* player, struct Map* map);
+void open_weapon_inventory_menu(Player* player, struct Map* map, struct MessageQueue* message_queue);
 const char* symbol_to_name(char symbol);
 Weapon create_weapon(char symbol);
 //void display_weapons_inventory(Player* player);
 void equip_weapon(Player* player, int weapon_index);
-void use_weapon(Player* player);
+void use_weapon(Player* player, struct Map* map, struct MessageQueue* message_queue);
 
 // Function Declarations
 Spell create_spell(char symbol);
@@ -333,10 +339,17 @@ void add_spells(struct Map* game_map);
 // Function Declarations for Enemies
 void add_enemies(struct Map* map, int current_level);
 void render_enemies(struct Map* map);
-void update_enemies(struct Map* map, Player* player, int* hitpoints);
-void move_enemy_towards(Player* player, Enemy* enemy, struct Map* map);
+void update_enemies(struct Map* map, Player* player, int* hitpoints, struct MessageQueue* message_queue);
+void move_enemy_towards(Player* player, Enemy* enemy, struct Map* map, struct MessageQueue* message_queue);
 bool is_enemy_in_same_room(Player* player, Enemy* enemy, struct Map* map);
 void combat(Player* player, Enemy* enemy, struct Map* map, int* hitpoints);
 
+void throw_arrow(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue);
+void stun_enemy(struct Map* map, int x, int y, int damage, struct MessageQueue* message_queue);
+void throw_magic_wand(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue);
+void throw_dagger(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue);
+void deal_damage_to_enemy(struct Map* map, int x, int y, int damage, struct MessageQueue* message_queue);
+bool is_valid_tile(int x, int y);
+bool is_adjacent(struct Point p1, struct Point p2);
 
 #endif

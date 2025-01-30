@@ -3,13 +3,13 @@
     "username": "Reza",
     "password": "Lord453",
     "email": "s@g.c",
-    "score": "50",
-    "gold_collected": "5",
+    "score": "0",
+    "gold_collected": "0",
     "difficulty": 0,
     "color": "",
     "song": 0,
     "games_played": 0,
-    "days_since_first_game": 20117
+    "days_since_first_game": 20118
   },
   {
     "username": "Reza2",
@@ -21,6 +21,6 @@
     "color": "",
     "song": 0,
     "games_played": 0,
-    "days_since_first_game": 20117
+    "days_since_first_game": 20118
   }
 ]
