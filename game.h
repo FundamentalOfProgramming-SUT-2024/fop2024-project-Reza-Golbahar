@@ -67,6 +67,9 @@
 // Maximum number of weapons a player can carry
 #define MAX_WEAPONS         10
 #define MAX_SPELLS 10
+#define MAX_GOLDS           100
+#define MAX_FOOD_COUNT 100
+
 
 
 // Map constants
@@ -91,10 +94,6 @@
 #define FOOD_ROTTEN_SYM     'R'
 #define TREASURE_CHEST_SYM  'C'
 
-
-
-
-#define MAX_GOLDS           100
 
 
 // Utility macros
@@ -228,12 +227,17 @@ struct Map {
     time_t last_attack_time;
 };
 
-// Weapon structure
+typedef enum {
+    MELEE,
+    RANGED
+} WeaponType;
+
 typedef struct Weapon {
-    char symbol;            // '1' to '5'
-    char name[20];          // Name of the weapon
-    int damage;             // Damage value
-    int quantity;           // Quantity of weapon, for throwable or reusable ones
+    char symbol;
+    char name[50];
+    int damage;
+    WeaponType type; // New field to specify weapon type
+    int quantity;    // For ranged weapons
 } Weapon;
 
 // Spell Types
@@ -258,6 +262,9 @@ typedef struct Player {
     int hitpoints;
     int hunger_rate;
     int score;
+
+    int food_count; // New food count
+    int gold_count;
     
     // Weapon inventory
     Weapon weapons[MAX_WEAPONS];
@@ -299,6 +306,7 @@ struct MessageQueue {
 struct SavedGame {
     struct Map game_map;
     struct Point character_location;
+    Player player;
     int score;
     int current_level;  // Track the current level
     time_t save_time;
@@ -321,9 +329,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                struct Point* character_location, int initial_score);
 void init_map(struct Map* map);
 void create_corridors(Room* rooms, int room_count, char map[MAP_HEIGHT][MAP_WIDTH]);
-void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count,
-                         int* score, int* hunger_rate,
-                         int* ancient_key_count, int* broken_key_count);
+void open_inventory_menu(Player* player, struct MessageQueue* message_queue);
 void add_traps(struct Map* game_map);
 void print_password_messages(const char* message, int line_offset);
 Room* find_room_by_position(struct Map* map, int x, int y);
@@ -342,7 +348,7 @@ void print_full_map(struct Map* game_map, struct Point* character_location, stru
 
 // Saving/Loading
 void save_current_game(struct UserManager* manager, struct Map* game_map, 
-                      struct Point* character_location, int score, int current_level);
+                      Player* player, int current_level);
 bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game);
 void list_saved_games(struct UserManager* manager);
 
@@ -385,6 +391,8 @@ Weapon create_weapon(char symbol);
 //void display_weapons_inventory(Player* player);
 void equip_weapon(Player* player, int weapon_index);
 void use_weapon(Player* player, struct Map* map, struct MessageQueue* message_queue);
+bool is_melee_weapon(Weapon weapon);
+int get_ranged_weapon_count(Player* player, Weapon weapon);
 
 // Function Declarations
 Spell create_spell(char symbol);
@@ -398,7 +406,7 @@ void add_spells(struct Map* game_map);
 void add_enemies(struct Map* map, int current_level);
 void render_enemies(struct Map* map);
 void update_enemies(struct Map* map, Player* player, int* hitpoints, struct MessageQueue* message_queue);
-void move_enemy_towards(Player* player, Enemy* enemy, struct Map* map, struct MessageQueue* message_queue);
+void move_enemies_one_tile(Player* player, struct Map* map, struct MessageQueue* message_queue);
 bool is_enemy_in_same_room(Player* player, Enemy* enemy, struct Map* map);
 void combat(Player* player, Enemy* enemy, struct Map* map, int* hitpoints);
 
@@ -411,16 +419,18 @@ bool is_valid_tile(int x, int y);
 bool is_adjacent(struct Point p1, struct Point p2);
 
 // Function Declarations for Food
-void add_food(struct Map* map);
+void add_food(struct Map* map, Player* player);
 void handle_food_consumption(Player* player, struct Map* map, struct MessageQueue* message_queue);
 void update_food_items(struct Map* map, struct MessageQueue* message_queue);
 
 // Function Declarations for Gold
-void add_gold(struct Map* map);
+void add_gold(struct Map* map, Player* player);
 void handle_gold_collection(Player* player, struct Map* map, struct MessageQueue* message_queue);
 
 // Hunger and Health Mechanics
 void update_hunger_and_health(Player* player, struct Map* map, struct MessageQueue* message_queue);
+void consume_food(Player* player, struct MessageQueue* message_queue);
+void collect_food(Player* player, struct Map* map, struct MessageQueue* message_queue);
 // Ensure this is in game.c
 void update_temporary_effects(Player* player, struct Map* map, struct MessageQueue* message_queue);
 

@@ -57,7 +57,6 @@ void play_game(struct UserManager* manager, struct Map* game_map,
     const int max_level = 4;  // Define maximum levels
     int current_level = 1;    // Start at level 1
     bool game_running = true;
-    int score = initial_score;
 
     bool show_map = false;
 
@@ -65,9 +64,11 @@ void play_game(struct UserManager* manager, struct Map* game_map,
     Player player;
     initialize_player(&player, game_map->initial_position);
 
-    // Initialize other variables
-    int hitpoints = 100;            // Initial hitpoints
-    int hunger_rate = 0;            // Initial hunger rate
+    //it was at generate_map before
+    add_food(game_map, &player);
+    add_gold(game_map, &player);
+
+
     const int MAX_HUNGER = 100;     // Threshold for hunger affecting hitpoints
     const int HUNGER_INCREASE_INTERVAL = 50; // Frames for hunger to increase
     const int HUNGER_DAMAGE_INTERVAL = 20;   // Frames for hitpoint loss due to hunger
@@ -108,15 +109,12 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         update_temporary_effects(&player, game_map, &message_queue);
 
         update_password_display();
-        
-        // Update enemies' actions
-        update_enemies(game_map, &player, &hitpoints, &message_queue);
 
         // Update hunger rate and health regeneration
         update_hunger_and_health(&player, game_map, &message_queue);
 
         // Update enemies
-        update_enemies(game_map, &player, &hitpoints, &message_queue);
+        update_enemies(game_map, &player, &player.hitpoints, &message_queue);
 
         // Display messages
         draw_messages(&message_queue, 0, MAP_WIDTH+1);
@@ -147,23 +145,25 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         }
         if (manager->current_user) {
         mvprintw(MAP_HEIGHT +3, 0, "Score: %d               Hitpoints: %d                  Player: %s", 
-                score, hitpoints, manager->current_user->username);
+                player.score, player.hitpoints, manager->current_user->username);
         } else {
             mvprintw(MAP_HEIGHT + 3, 0, "Score: %d               Hitpoints: %d                  Player: Guest",
-                    score, hitpoints);
+                    player.score, player.hitpoints);
         }
         mvprintw(MAP_HEIGHT + 4, 0, "Controls: Arrow Keys to Move, 'i' - Weapon Inventory, 'e' - General Inventory, 'q' - Quit g-save");
         refresh();
 
         // Increase hunger rate over time
         if (frame_count % HUNGER_INCREASE_INTERVAL == 0) {
-            hunger_rate++;
+            if (player.hunger_rate < MAX_HUNGER) {
+                player.hunger_rate++;
+            }
         }
 
         // Decrease hitpoints if hunger exceeds threshold
-        if (hunger_rate >= MAX_HUNGER) {
+        if (player.hunger_rate >= MAX_HUNGER) {
             if (hunger_damage_timer % HUNGER_DAMAGE_INTERVAL == 0) {
-                hitpoints -= HITPOINT_DECREASE_RATE;
+                player.hitpoints -= HITPOINT_DECREASE_RATE;
                 add_game_message(&message_queue, "Hunger is too high! HP decreased.", 4); // COLOR_PAIR_TRAPS
             }
             hunger_damage_timer++;
@@ -172,7 +172,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         }
 
         // Check if hitpoints are zero
-        if (hitpoints <= 0) {
+        if (player.hitpoints <= 0) {
             add_game_message(&message_queue, "Game Over! You ran out of hitpoints.", 7); // COLOR_PAIR_FINAL_FAIL
             game_running = false;
         }
@@ -181,8 +181,8 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         // Example: Add a new food and gold every 30 seconds
         static time_t last_item_add_time = 0;
         if (difftime(time(NULL), last_item_add_time) >= 30.0) {
-            add_food(game_map);
-            add_gold(game_map);
+            add_food(game_map, &player);
+            add_gold(game_map, &player);
             last_item_add_time = time(NULL);
         }
 
@@ -197,9 +197,9 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             continue;  // Skip the rest of the loop to refresh the display
         }
         if (key=='g'){
-            manager->current_user->gold = gold_count;
+            manager->current_user->gold = player.gold_count;
             if (manager->current_user)
-                save_current_game(manager, game_map, character_location, score, current_level);
+                save_current_game(manager, game_map, &player, current_level);
         }
         switch (key) {
             case KEY_UP:
@@ -207,9 +207,10 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             case KEY_LEFT:
             case KEY_RIGHT:
                 // Move the character
-                move_character(&player, key, game_map, &hitpoints, &message_queue);
+                move_character(&player, key, game_map, &player.hitpoints, &message_queue);
                 *character_location = player.location; // Synchronize positions
 
+                update_enemies(game_map, &player, &player.hitpoints, &message_queue);
                 // Check the tile the player moves onto
                 char tile = game_map->grid[character_location->y][character_location->x];
 
@@ -264,7 +265,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                             if (!trap->triggered) {
                                 trap->triggered = true;
                                 game_map->grid[character_location->y][character_location->x] = TRAP_SYMBOL;
-                                hitpoints -= 10;
+                                player.hitpoints -= 10;
                                 add_game_message(&message_queue, "You triggered a trap! Hitpoints decreased.", 4); // COLOR_PAIR_TRAPS
                             }
                             break;
@@ -276,8 +277,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             case 'e':
             case 'E':
                 // Open inventory menu
-                open_inventory_menu(food_inventory, &food_count, &gold_count, &score, &hunger_rate,
-                        &player.ancient_key_count, &player.broken_key_count);
+                open_inventory_menu(&player, &message_queue);
                 break;
 
             case 'a':
@@ -300,9 +300,9 @@ void play_game(struct UserManager* manager, struct Map* game_map,
 
             case 'q':
                 if (manager->current_user)
-                    manager->current_user->gold = gold_count;
+                    manager->current_user->gold = player.gold_count;
 
-                save_current_game(manager, game_map, character_location, score, current_level);
+                    save_current_game(manager, game_map, &player, current_level);
 
                 game_running = false;
                 break;
@@ -572,8 +572,6 @@ struct Map generate_map(struct Room* previous_room, int current_level, int max_l
     place_secret_doors(&map);
 
     // Spawn items and features
-    add_food(&map);
-    add_gold(&map);
     add_traps(&map);
     add_weapons(&map);
     add_spells(&map);
@@ -670,85 +668,84 @@ void add_traps(struct Map* game_map) {
     }
 }
 
-void open_inventory_menu(int* food_inventory, int* food_count, int* gold_count,
-                         int* score, int* hunger_rate,
-                         int* ancient_key_count, int* broken_key_count){
+void open_inventory_menu(Player* player, struct MessageQueue* message_queue){
     bool menu_open = true;
 
     while (menu_open) {
         clear();
-        mvprintw(0, 0, "Inventory Menu");
+        mvprintw(0, 0, "General Inventory");
 
         // 1) Show food inventory
         mvprintw(2, 0, "Food Inventory:");
-        for (int i = 0; i < 5; i++) {
-            if (food_inventory[i] == 1) {
-                mvprintw(4 + i, 0, "Slot %d: Food", i + 1);
-            } else {
-                mvprintw(4 + i, 0, "Slot %d: Empty", i + 1);
+        if (player->food_count == 0) {
+            mvprintw(3, 2, "No food items.");
+        } else {
+            for (int i = 0; i < player->food_count; i++) {
+                mvprintw(3 + i, 2, "Food Slot %d", i + 1);
             }
         }
 
-        // 2) Show standard info
-        mvprintw(10, 0, "Gold Collected: %d", *gold_count);
-        mvprintw(11, 0, "Hunger: %d", *hunger_rate);
+        // 2) Show gold count
+        mvprintw(5 + player->food_count, 0, "Gold Collected: %d", player->gold_count);
 
         // 3) Show Ancient Key info
-        //    The working keys and broken key pieces
-        mvprintw(13, 0, "Ancient Keys (working): %d", *ancient_key_count);
-        mvprintw(14, 0, "Broken Key Pieces: %d", *broken_key_count);
+        mvprintw(6 + player->food_count, 0, "Ancient Keys (working): %d", player->ancient_key_count);
+        mvprintw(7 + player->food_count, 0, "Broken Key Pieces: %d", player->broken_key_count);
 
         // 4) Instructions
-        mvprintw(16, 0, "Press 'u' + slot number (1-5) to use food, 'c' to combine 2 broken keys, 'q' to quit.");
+        mvprintw(9 + player->food_count, 0, "Options:");
+        mvprintw(10 + player->food_count, 2, "u <number> - Use food");
+        mvprintw(11 + player->food_count, 2, "c         - Combine broken keys");
+        mvprintw(12 + player->food_count, 2, "q         - Quit inventory");
         refresh();
 
         // Handle input
         int key = getch();
-        switch (key) {
-            case 'q':
-                // Exit menu
-                menu_open = false;
-                break;
+        if (key == 'q' || key == 'Q') {
+            menu_open = false;
+            continue;
+        }
 
+        switch (tolower(key)) {
             case 'u': {
                 // Using food from a slot
-                mvprintw(18, 0, "Enter slot number (1-5): ");
+                mvprintw(14, 0, "Enter food slot number to use (1-%d): ", player->food_count);
                 refresh();
-                int slot = getch() - '0'; // Convert char to integer
+                char input[10];
+                echo();
+                getnstr(input, sizeof(input) - 1);
+                noecho();
 
-                if (slot >= 1 && slot <= 5 && food_inventory[slot - 1] == 1) {
-                    // Use food
-                    food_inventory[slot - 1] = 0;
-                    (*food_count)--;
-                    *hunger_rate = MAX(*hunger_rate - 20, 0);
+                int slot = atoi(input) - 1; // Convert to 0-based index
 
-                    mvprintw(20, 0, "You used food from slot %d! Hunger decreased.", slot);
+                if (slot >= 0 && slot < player->food_count) {
+                    consume_food(player, message_queue);
                 } else {
-                    mvprintw(20, 0, "Invalid slot or no food in slot!");
+                    add_game_message(message_queue, "Invalid food slot number!", 7); // Red color
                 }
-                refresh();
-                getch(); // Wait for player to acknowledge
-            } break;
+                break;
+            }
 
             case 'c': {
-                // Combine two broken key pieces into one working Ancient Key
-                if (*broken_key_count >= 2) {
-                    *broken_key_count -= 2;
-                    (*ancient_key_count)++;
-                    mvprintw(18, 0, "You combined two broken key pieces into one working Ancient Key!");
+                // Combine broken key pieces into one working Ancient Key
+                if (player->broken_key_count >= 2) {
+                    player->broken_key_count -= 2;
+                    player->ancient_key_count++;
+                    add_game_message(message_queue, "You combined two broken key pieces into one Ancient Key!", 2); // Green color
                 } else {
-                    mvprintw(18, 0, "Not enough broken key pieces to combine!");
+                    add_game_message(message_queue, "Not enough broken key pieces to combine!", 7); // Red color
                 }
-                refresh();
-                getch(); // Wait for player
-            } break;
+                break;
+            }
 
             default:
-                // Ignore other keys
+                // Invalid key
+                add_game_message(message_queue, "Invalid command in inventory!", 7); // Red color
                 break;
         }
     }
 }
+
 
 void print_point(struct Point p, const char* type) {
     if (p.y < 0 || p.x < 0 || p.y >= MAP_HEIGHT || p.x >= MAP_WIDTH) return;
@@ -840,7 +837,7 @@ void sight_range(struct Map* game_map, struct Point* character_location) {
     }
 }
 
-void add_food(struct Map* map) {
+void add_food(struct Map* map, Player* player) {
     if (map->food_count >= 100) return; // Prevent overflow
 
     // Randomly decide the type of food to add
@@ -889,6 +886,7 @@ void add_food(struct Map* map) {
                     break;
             }
 
+            player->food_count++;
             map->food_count++;
             placed = true;
             break;
@@ -1445,10 +1443,13 @@ void place_password_generator_in_corner(struct Map* map, struct Room* room) {
 void move_character(Player* player, int key, struct Map* game_map, int* hitpoints, struct MessageQueue* message_queue){
     struct Point new_location = player->location;
     switch (key) {
-        case KEY_UP:    new_location.y--; break;
-        case KEY_DOWN:  new_location.y++; break;
-        case KEY_LEFT:  new_location.x--; break;
-        case KEY_RIGHT: new_location.x++; break;
+        case KEY_UP:    new_location.y--;      break;
+
+        case KEY_DOWN:  new_location.y++;      break;
+
+        case KEY_LEFT:  new_location.x--;      break;
+
+        case KEY_RIGHT: new_location.x++;      break;
         default: return;
     }
 
@@ -1804,8 +1805,8 @@ bool rooms_overlap(const struct Room* r1, const struct Room* r2) {
              r2->top_wall + MIN_ROOM_DISTANCE < r1->bottom_wall);
 }
 
-void add_gold(struct Map* map) {
-    if (map->gold_count >= MAX_GOLDS) return; // Prevent overflow
+void add_gold(struct Map* map, Player* player) {
+    if (player->gold_count >= MAX_GOLDS) return; // Prevent overflow
 
     // Randomly decide the type of gold to add
     GoldType type = GOLD_NORMAL;
@@ -1842,6 +1843,9 @@ void add_gold(struct Map* map) {
                     break;
             }
 
+            int gold_amount = (type == GOLD_NORMAL) ? (rand() % 100 + 1) : ((rand() % 100 + 1) * 2);
+            player->gold_count += gold_amount;
+
             map->gold_count++;
             placed = true;
             break;
@@ -1872,14 +1876,14 @@ void handle_gold_collection(Player* player, struct Map* map, struct MessageQueue
 
             if (type == GOLD_NORMAL) {
                 int gold_amount = rand() % 100 + 1; // Random between 1 and 100
-                player->score += gold_amount;
+                player->gold_count += gold_amount;
                 char message[100];
                 snprintf(message, sizeof(message), "You collected Normal Gold: +%d Gold.", gold_amount);
                 add_game_message(message_queue, message, COLOR_PAIR_HEALTH); // Green color
             }
             else if (type == GOLD_BLACK) {
                 int gold_amount = (rand() % 100 + 1) * 2; // Twice normal gold
-                player->score += gold_amount;
+                player->gold_count += gold_amount;
                 char message[100];
                 snprintf(message, sizeof(message), "You collected Black Gold: +%d Gold.", gold_amount);
                 add_game_message(message_queue, message, COLOR_PAIR_SPEED); // Blue color
@@ -1889,6 +1893,7 @@ void handle_gold_collection(Player* player, struct Map* map, struct MessageQueue
         }
     }
 }
+
 
 // Function to update hunger rate and health regeneration
 void update_hunger_and_health(Player* player, struct Map* map, struct MessageQueue* message_queue) {
@@ -2242,18 +2247,20 @@ bool create_safe_filename(char* dest, size_t dest_size, const char* username, co
 }
 
 void save_current_game(struct UserManager* manager, struct Map* game_map, 
-                      struct Point* character_location, int score, int current_level) {
-    //load_users_from_json(manager);
+                       Player* player, int current_level) {
     if (!manager->current_user) {
         mvprintw(0, 0, "Cannot save game as guest user.");
         refresh();
         getch();
         return;
     }
-    manager->current_user->score = score;
+
+    // Update user data
+    manager->current_user->score = player->score;
+    manager->current_user->gold = player->gold_count;
     save_users_to_json(manager);
 
-    char filename[256]; // Increased buffer size to prevent truncation
+    char filename[256]; // Ensure buffer is large enough
     char save_name[100];
 
     clear();
@@ -2288,14 +2295,23 @@ void save_current_game(struct UserManager* manager, struct Map* game_map,
         return;
     }
 
-    struct SavedGame save = {
-        .game_map = *game_map,
-        .character_location = *character_location,
-        .score = score,
-        .current_level = current_level,
-        .save_time = time(NULL)
-    };
+    struct SavedGame save;
+    // Ensure that SavedGame struct includes a Player member
+    // Assuming SavedGame is defined as follows:
+    // typedef struct {
+    //     struct Map game_map;
+    //     Player player;
+    //     int current_level;
+    //     char name[100];
+    //     time_t save_time;
+    // } SavedGame;
+
+    save.game_map = *game_map;
+    save.player = *player;
+    save.current_level = current_level;
     strncpy(save.name, save_name, sizeof(save.name) - 1);
+    save.name[sizeof(save.name) - 1] = '\0';
+    save.save_time = time(NULL);
 
     fwrite(&save, sizeof(struct SavedGame), 1, file);
     fclose(file);
@@ -2411,26 +2427,38 @@ Weapon create_weapon(char symbol) {
         case WEAPON_MACE:
             strcpy(weapon.name, "Mace");
             weapon.damage = 15;
+            weapon.type = MELEE;
+            weapon.quantity = 1; // Melee weapons have a fixed count
             break;
         case WEAPON_DAGGER:
             strcpy(weapon.name, "Dagger");
             weapon.damage = 10;
+            weapon.type = RANGED;
+            weapon.quantity = 10; // Example starting quantity
             break;
         case WEAPON_MAGIC_WAND:
             strcpy(weapon.name, "Magic Wand");
             weapon.damage = 20;
+            weapon.type = RANGED;
+            weapon.quantity = 5;
             break;
         case WEAPON_ARROW:
             strcpy(weapon.name, "Arrow");
             weapon.damage = 8;
+            weapon.type = RANGED;
+            weapon.quantity = 50;
             break;
         case WEAPON_SWORD:
             strcpy(weapon.name, "Sword");
             weapon.damage = 18;
+            weapon.type = MELEE;
+            weapon.quantity = 1;
             break;
         default:
             strcpy(weapon.name, "Unknown");
             weapon.damage = 0;
+            weapon.type = MELEE;
+            weapon.quantity = 1;
     }
     
     return weapon;
@@ -2534,37 +2562,47 @@ void open_weapon_inventory_menu(Player* player, struct Map* map, struct MessageQ
         clear();
         mvprintw(0, 0, "Weapon Inventory:");
 
-        if (player->weapon_count == 0) {
-            mvprintw(2, 2, "No weapons collected.");
-        } else {
-            for (int i = 0; i < player->weapon_count; i++) {
-                mvprintw(2 + i, 2, "Weapon %d: %s (Damage: %d)%s", 
-                         i + 1, 
-                         player->weapons[i].name, 
-                         player->weapons[i].damage,
-                         (player->equipped_weapon == i) ? " [Equipped]" : "");
+        // Display Melee Weapons
+        mvprintw(2, 0, "Melee Weapons:");
+        bool has_melee = false;
+        for (int i = 0; i < player->weapon_count; i++) {
+            if (player->weapons[i].type == MELEE) {
+                has_melee = true;
+                mvprintw(3 + i, 2, "%s (Owned)", player->weapons[i].name);
             }
+        }
+        if (!has_melee) {
+            mvprintw(3, 2, "No melee weapons.");
+        }
+
+        // Display Ranged Weapons
+        mvprintw(5 + player->weapon_count, 0, "Ranged Weapons:");
+        bool has_ranged = false;
+        for (int i = 0; i < player->weapon_count; i++) {
+            if (player->weapons[i].type == RANGED) {
+                has_ranged = true;
+                mvprintw(6 + i, 2, "%s (Count: %d)", player->weapons[i].name, player->weapons[i].quantity);
+            }
+        }
+        if (!has_ranged) {
+            mvprintw(6, 2, "No ranged weapons.");
         }
 
         // Display menu options
-        mvprintw(4 + player->weapon_count, 0, "Options:");
-        mvprintw(5 + player->weapon_count, 2, "e <number> - Equip weapon");
-        mvprintw(6 + player->weapon_count, 2, "u         - Use equipped weapon");
-        mvprintw(7 + player->weapon_count, 2, "d <number> - Drop weapon");
-        mvprintw(8 + player->weapon_count, 2, "q         - Quit weapon inventory");
+        int offset = 8 + player->weapon_count;
+        mvprintw(offset, 0, "Options:");
+        mvprintw(offset + 1, 2, "e <weapon_name> - Equip weapon");
+        mvprintw(offset + 2, 2, "u             - Use equipped weapon");
+        mvprintw(offset + 3, 2, "d <weapon_name> - Drop weapon");
+        mvprintw(offset + 4, 2, "q             - Quit weapon inventory");
         refresh();
 
-        // Prompt for user input
-        mvprintw(10 + player->weapon_count, 0, "Enter your choice: ");
-        refresh();
-
-        // Read input (simple approach)
-        char input[10];
+        // Handle input
+        char input[100];
         echo();
         getnstr(input, sizeof(input) - 1);
         noecho();
 
-        // Parse input
         if (strlen(input) == 0) {
             continue;
         }
@@ -2575,84 +2613,124 @@ void open_weapon_inventory_menu(Player* player, struct Map* map, struct MessageQ
             menu_open = false;
             continue;
         }
-        else if (command == 'e') {
-            // Equip weapon
-            if (player->weapon_count == 0) {
-                mvprintw(12, 0, "No weapons to equip.");
-                refresh();
-                getch();
-                continue;
-            }
 
-            int weapon_num = atoi(&input[1]) - 1; // Convert to 0-based index
-            if (weapon_num >= 0 && weapon_num < player->weapon_count) {
-                equip_weapon(player, weapon_num);
-            } else {
-                mvprintw(12, 0, "Invalid weapon number!");
-                refresh();
-                getch();
-            }
-        }
-        else if (command == 'u') {
-            // Use equipped weapon
-            use_weapon(player, map, message_queue);
-        }
-        else if (command == 'd') {
-            // Drop weapon
-            if (player->weapon_count == 0) {
-                mvprintw(12, 0, "No weapons to drop.");
-                refresh();
-                getch();
-                continue;
-            }
+        switch (command) {
+            case 'e': {
+                // Equip weapon by name
+                char weapon_name[50];
+                sscanf(&input[1], "%s", weapon_name);
 
-            int weapon_num = atoi(&input[1]) - 1; // Convert to 0-based index
-            if (weapon_num >= 0 && weapon_num < player->weapon_count) {
-                // Drop the weapon on the current location if possible
-                struct Point drop_location = player->location;
-                char current_tile = map->grid[drop_location.y][drop_location.x];
-
-                if (current_tile == FLOOR) {
-                    // Place the weapon symbol on the map
-                    map->grid[drop_location.y][drop_location.x] = player->weapons[weapon_num].symbol;
-
-                    // Notify the player
-                    char message[100];
-                    snprintf(message, sizeof(message), "You dropped a %s at your current location.", player->weapons[weapon_num].name);
-                    add_game_message(message_queue, message, 2); // Green color
-                    refresh();
-                    getch();
-
-                    // Remove the weapon from inventory
-                    for (int i = weapon_num; i < player->weapon_count - 1; i++) {
-                        player->weapons[i] = player->weapons[i + 1];
+                bool found = false;
+                for (int i = 0; i < player->weapon_count; i++) {
+                    if (strcasecmp(player->weapons[i].name, weapon_name) == 0) {
+                        player->equipped_weapon = i;
+                        char msg[100];
+                        snprintf(msg, sizeof(msg), "Equipped %s.", player->weapons[i].name);
+                        add_game_message(message_queue, msg, 2); // Green color
+                        found = true;
+                        break;
                     }
-                    player->weapon_count--;
-
-                    // If the dropped weapon was equipped, unequip it
-                    if (player->equipped_weapon == weapon_num) {
-                        player->equipped_weapon = -1;
-                        mvprintw(13, 0, "You have unequipped your weapon.");
-                        refresh();
-                        getch();
-                    }
-                } else {
-                    mvprintw(12, 0, "Cannot drop weapon here. Tile is not empty.");
-                    refresh();
-                    getch();
                 }
-            } else {
-                mvprintw(12, 0, "Invalid weapon number!");
-                refresh();
-                getch();
+
+                if (!found) {
+                    add_game_message(message_queue, "Weapon not found in inventory!", 7); // Red color
+                }
+                break;
             }
-        }
-        else {
-            mvprintw(12, 0, "Invalid command!");
-            refresh();
-            getch();
+
+            case 'u': {
+                // Use equipped weapon
+                use_weapon(player, map, message_queue);
+                break;
+            }
+
+            case 'd': {
+                // Drop weapon by name
+                char weapon_name[50];
+                sscanf(&input[1], "%s", weapon_name);
+
+                bool found = false;
+                for (int i = 0; i < player->weapon_count; i++) {
+                    if (strcasecmp(player->weapons[i].name, weapon_name) == 0) {
+                        // Drop logic based on weapon type
+                        struct Point drop_location = player->location;
+                        char current_tile = map->grid[drop_location.y][drop_location.x];
+
+                        if (current_tile == FLOOR) {
+                            // Place the weapon symbol on the map
+                            if (player->weapons[i].type == RANGED) {
+                                // Only decrease quantity for ranged weapons
+                                if (player->weapons[i].quantity > 0) {
+                                    player->weapons[i].quantity--;
+                                    if (player->weapons[i].quantity == 0) {
+                                        // Remove the weapon from inventory
+                                        for (int j = i; j < player->weapon_count - 1; j++) {
+                                            player->weapons[j] = player->weapons[j + 1];
+                                        }
+                                        player->weapon_count--;
+                                        if (player->equipped_weapon == i) {
+                                            player->equipped_weapon = -1;
+                                        }
+                                    }
+                                    map->grid[drop_location.y][drop_location.x] = player->weapons[i].symbol;
+                                    char msg[100];
+                                    snprintf(msg, sizeof(msg), "Dropped one %s.", player->weapons[i].name);
+                                    add_game_message(message_queue, msg, 2); // Green color
+                                }
+                            } else {
+                                // For melee weapons, indicate possession
+                                // Since count isn't important, simply remove it if dropping
+                                map->grid[drop_location.y][drop_location.x] = FLOOR;
+                                char msg[100];
+                                snprintf(msg, sizeof(msg), "Dropped %s.", player->weapons[i].name);
+                                add_game_message(message_queue, msg, 2); // Green color
+                                // Remove the weapon from inventory
+                                for (int j = i; j < player->weapon_count - 1; j++) {
+                                    player->weapons[j] = player->weapons[j + 1];
+                                }
+                                player->weapon_count--;
+                                if (player->equipped_weapon == i) {
+                                    player->equipped_weapon = -1;
+                                }
+                            }
+
+                            found = true;
+                            break;
+                        } else {
+                            add_game_message(message_queue, "Cannot drop weapon here. Tile is not empty.", 7); // Red color
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!found) {
+                    add_game_message(message_queue, "Weapon not found in inventory!", 7); // Red color
+                }
+                break;
+            }
+
+            default:
+                add_game_message(message_queue, "Invalid command in weapon inventory!", 7); // Red color
+                break;
         }
     }
+}
+
+
+bool is_melee_weapon(Weapon weapon) {
+    // Return true if weapon is melee, false if ranged
+    return (weapon.symbol == WEAPON_SWORD || weapon.symbol == WEAPON_MACE);
+}
+
+int get_ranged_weapon_count(Player* player, Weapon weapon) {
+    int count = 0;
+    for (int i = 0; i < player->weapon_count; i++) {
+        if (player->weapons[i].symbol == weapon.symbol) {
+            count++;
+        }
+    }
+    return count;
 }
 
 // Function to create a spell based on its symbol
@@ -3063,7 +3141,7 @@ void update_enemies(struct Map* map, Player* player, int* hitpoints, struct Mess
 
         // Handle chasing behavior
         if (enemy->chasing) {
-            move_enemy_towards(player, enemy, map, message_queue);
+            move_enemies_one_tile(player, map, message_queue);
         }
 
         // Check for adjacent enemy and deal damage
@@ -3077,43 +3155,59 @@ void update_enemies(struct Map* map, Player* player, int* hitpoints, struct Mess
     }
 }
 
-void move_enemy_towards(Player* player, Enemy* enemy, struct Map* map, struct MessageQueue* message_queue) {
-    int dx = player->location.x - enemy->position.x;
-    int dy = player->location.y - enemy->position.y;
+void move_enemies_one_tile(Player* player, struct Map* map, struct MessageQueue* message_queue) {
+    for (int i = 0; i < map->enemy_count; i++) {
+        Enemy* enemy = &map->enemies[i];
+        if (enemy->active) {
+            // Determine direction towards the player
+            int dx = player->location.x - enemy->position.x;
+            int dy = player->location.y - enemy->position.y;
 
-    // Normalize movement to one step
-    if (dx != 0) dx = dx / abs(dx);
-    if (dy != 0) dy = dy / abs(dy);
+            // Normalize movement to one step
+            if (dx != 0) dx = dx / abs(dx);
+            if (dy != 0) dy = dy / abs(dy);
 
-    // Determine new position
-    int new_x = enemy->position.x + dx;
-    int new_y = enemy->position.y + dy;
+            int new_x = enemy->position.x + dx;
+            int new_y = enemy->position.y + dy;
 
-    // Check map boundaries
-    if (new_x < 0 || new_x >= MAP_WIDTH || new_y < 0 || new_y >= MAP_HEIGHT)
-        return;
+            // Check map boundaries
+            if (new_x < 0 || new_x >= MAP_WIDTH || new_y < 0 || new_y >= MAP_HEIGHT)
+                continue;
 
-    char target_tile = map->grid[new_y][new_x];
+            char target_tile = map->grid[new_y][new_x];
 
-    // Check if the tile is passable (floor or player)
-    if (target_tile == FLOOR || target_tile == PLAYER_CHAR) {
-        // Check if another enemy is already on the target tile
-        bool occupied = false;
-        for (int i = 0; i < map->enemy_count; i++) {
-            if (i == (enemy - map->enemies)) continue; // Skip self
-            if (map->enemies[i].position.x == new_x && 
-                map->enemies[i].position.y == new_y) {
-                occupied = true;
-                break;
+            // Check if the tile is passable (floor or player)
+            if (target_tile == FLOOR || target_tile == PLAYER_CHAR) {
+                // Check if another enemy is already on the target tile
+                bool occupied = false;
+                for (int j = 0; j < map->enemy_count; j++) {
+                    if (j == i) continue; // Skip self
+                    if (map->enemies[j].position.x == new_x && 
+                        map->enemies[j].position.y == new_y) {
+                        occupied = true;
+                        break;
+                    }
+                }
+
+                if (!occupied) {
+                    // Update the map grid
+                    map->grid[enemy->position.y][enemy->position.x] = FLOOR; // Remove enemy from current position
+                    enemy->position.x = new_x;
+                    enemy->position.y = new_y;
+                    map->grid[new_y][new_x] = enemy->type; // Place enemy at new position
+
+                    // Check if enemy has moved onto the player's tile
+                    if (new_x == player->location.x && new_y == player->location.y) {
+                        // Enemy attacks player
+                        player->hitpoints -= enemy->hp; // Damage based on enemy's HP or damage attribute
+                        add_game_message(message_queue, "An enemy has attacked you!", 7); // Red color
+                        if (player->hitpoints <= 0) {
+                            add_game_message(message_queue, "Game Over! You were defeated by an enemy.", 7); // Red color
+                            // Handle game over
+                        }
+                    }
+                }
             }
-        }
-
-        if (!occupied) {
-            // Update the map grid
-            map->grid[enemy->position.y][enemy->position.x] = FLOOR; // Remove enemy from current position
-            enemy->position.x = new_x;
-            enemy->position.y = new_y;
-            map->grid[new_y][new_x] = enemy->type; // Place enemy at new position
         }
     }
 }
@@ -3405,14 +3499,13 @@ void use_weapon(Player* player, struct Map* map, struct MessageQueue* message_qu
     Weapon* weapon = &player->weapons[player->equipped_weapon];
     switch (weapon->symbol) {
         case WEAPON_MACE:
-            // Damage to 8 adjacent tiles
+            // Damage to adjacent tiles
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dy = -1; dy <= 1; dy++) {
-                    int new_x = player->location.x + dx;
-                    int new_y = player->location.y + dy;
-                    if (is_valid_tile(new_x, new_y)) {
-                        // Apply damage to enemies in range
-                        deal_damage_to_enemy(map, new_x, new_y, weapon->damage, message_queue);
+                    int target_x = player->location.x + dx;
+                    int target_y = player->location.y + dy;
+                    if (is_valid_tile(target_x, target_y)) {
+                        deal_damage_to_enemy(map, target_x, target_y, weapon->damage, message_queue);
                     }
                 }
             }
@@ -3435,14 +3528,13 @@ void use_weapon(Player* player, struct Map* map, struct MessageQueue* message_qu
             break;
 
         case WEAPON_SWORD:
-            // Damage to 8 adjacent tiles
+            // Damage to adjacent tiles
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dy = -1; dy <= 1; dy++) {
-                    int new_x = player->location.x + dx;
-                    int new_y = player->location.y + dy;
-                    if (is_valid_tile(new_x, new_y)) {
-                        // Apply damage to enemies in range
-                        deal_damage_to_enemy(map, new_x, new_y, weapon->damage, message_queue);
+                    int target_x = player->location.x + dx;
+                    int target_y = player->location.y + dy;
+                    if (is_valid_tile(target_x, target_y)) {
+                        deal_damage_to_enemy(map, target_x, target_y, weapon->damage, message_queue);
                     }
                 }
             }
@@ -3474,6 +3566,42 @@ void update_temporary_effects(Player* player, struct Map* map, struct MessageQue
         char message[100];
         snprintf(message, sizeof(message), "Temporary speed boost has worn off.");
         add_game_message(message_queue, message, 14); // Yellow color
+    }
+}
+
+// Function to handle food consumption from inventory
+void consume_food(Player* player, struct MessageQueue* message_queue) {
+    if (player->food_count <= 0) {
+        add_game_message(message_queue, "No food to consume!", 7); // Red color
+        return;
+    }
+
+    // Consume the food
+    player->food_count--;
+
+    // Decrease hunger rate
+    player->hunger_rate = (player->hunger_rate >= 20) ? (player->hunger_rate - 20) : 0;
+
+    add_game_message(message_queue, "You consumed food and decreased hunger.", 2); // Green color
+}
+
+// Function to collect food (add to inventory)
+void collect_food(Player* player, struct Map* map, struct MessageQueue* message_queue) {
+    struct Point pos = player->location;
+    for (int i = 0; i < map->food_count; i++) {
+        if (!map->foods[i].consumed && map->foods[i].position.x == pos.x && map->foods[i].position.y == pos.y) {
+            // Add food to player's inventory
+            if (player->food_count < MAX_FOOD_COUNT) {
+                player->food_count++;
+                map->foods[i].consumed = true;
+                map->grid[pos.y][pos.x] = FLOOR; // Remove food symbol from map
+
+                add_game_message(message_queue, "You picked up some food!", 2); // Green color
+            } else {
+                add_game_message(message_queue, "Your food inventory is full!", 7); // Red color
+            }
+            break; // Assuming only one food item per tile
+        }
     }
 }
 
