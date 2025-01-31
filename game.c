@@ -36,9 +36,20 @@ void initialize_player(Player* player, struct Point start_location) {
     player->equipped_weapon = 0; // Equip first weapon
     player->ancient_key_count = 0;
     player->broken_key_count = 0;
-    // Initialize other player attributes as needed
 
+    // Initialize weapons
     player->weapons[0] = create_weapon(WEAPON_MACE);
+
+    // Initialize spells
+    player->spell_count = 0; // Assuming no spells initially
+
+    // Initialize temporary effects
+    player->temporary_damage = 0;
+    player->temporary_damage_start_time = 0;
+    player->temporary_speed = 0;
+    player->temporary_speed_start_time = 0;
+    player->temporary_damage_timer = 0;
+    player->temporary_speed_timer = 0;
 }
 
 void play_game(struct UserManager* manager, struct Map* game_map, 
@@ -71,6 +82,9 @@ void play_game(struct UserManager* manager, struct Map* game_map,
     int food_count = 0;
     int gold_count = 0;
 
+    game_map->last_hunger_decrease = time(NULL);
+    game_map->last_attack_time = time(NULL);
+
     // Initialize visibility array (all tiles hidden initially)
     bool visible[MAP_HEIGHT][MAP_WIDTH] = {0}; 
     visible[character_location->y][character_location->x] = 1; // Start position is visible
@@ -90,7 +104,23 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             // Display only visible parts of the map
             print_map(game_map, visible, *character_location, manager);
         }
+
+        update_temporary_effects(&player, game_map, &message_queue);
+
         update_password_display();
+        
+        // Update enemies' actions
+        update_enemies(game_map, &player, &hitpoints, &message_queue);
+
+        // Update hunger rate and health regeneration
+        update_hunger_and_health(&player, game_map, &message_queue);
+
+        // Update enemies
+        update_enemies(game_map, &player, &hitpoints, &message_queue);
+
+        // Display messages
+        draw_messages(&message_queue, 0, MAP_WIDTH+1);
+        update_messages(&message_queue);
 
         // Render enemies
         render_enemies(game_map);
@@ -105,11 +135,6 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                 add_game_message(&message_queue, "An enemy has spotted you!", 16); // COLOR_PAIR_ENEMIES
             }
         }
-
-
-        //mvprintw(10, 10, "a");
-        // Update enemies' actions
-        update_enemies(game_map, &player, &hitpoints, &message_queue);
         
         // Show game info
         if (player.equipped_weapon != -1) {
@@ -129,10 +154,6 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         }
         mvprintw(MAP_HEIGHT + 4, 0, "Controls: Arrow Keys to Move, 'i' - Weapon Inventory, 'e' - General Inventory, 'q' - Quit g-save");
         refresh();
-
-        // Display messages
-        draw_messages(&message_queue, 0, MAP_WIDTH+1);
-        update_messages(&message_queue);
 
         // Increase hunger rate over time
         if (frame_count % HUNGER_INCREASE_INTERVAL == 0) {
@@ -154,6 +175,15 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         if (hitpoints <= 0) {
             add_game_message(&message_queue, "Game Over! You ran out of hitpoints.", 7); // COLOR_PAIR_FINAL_FAIL
             game_running = false;
+        }
+
+        // Possibly add gold and food periodically
+        // Example: Add a new food and gold every 30 seconds
+        static time_t last_item_add_time = 0;
+        if (difftime(time(NULL), last_item_add_time) >= 30.0) {
+            add_food(game_map);
+            add_gold(game_map);
+            last_item_add_time = time(NULL);
         }
 
         // Handle input
@@ -213,19 +243,18 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                         add_game_message(&message_queue, "Congratulations! You've completed all levels.", 2); // COLOR_PAIR_UNLOCKED_DOOR
                         game_running = false;
                     }
-                } else if (tile == FOOD) {
+                } else if (tile == FOOD_NORMAL_SYM || tile == FOOD_GREAT_SYM || 
+                    tile == FOOD_MAGICAL_SYM || tile == FOOD_ROTTEN_SYM) {
                     // Collect food
-                    if (food_count < 5) {
-                        game_map->grid[character_location->y][character_location->x] = FLOOR;
-                        food_inventory[food_count++] = 1;
-                        add_game_message(&message_queue, "You collected some food.", 3); // COLOR_PAIR_WEAPONS
-                    }
-                } else if (tile == GOLD) {
+                    handle_food_consumption(&player, game_map, &message_queue);
+                } else if (tile == GOLD_NORMAL_SYM || tile == GOLD_BLACK_SYM) {
                     // Collect gold
-                    game_map->grid[character_location->y][character_location->x] = FLOOR;
-                    gold_count++;
-                    score += 10;
-                    add_game_message(&message_queue, "You collected some gold.", 3); // COLOR_PAIR_WEAPONS
+                    handle_gold_collection(&player, game_map, &message_queue);
+                } else if (tile == TREASURE_CHEST_SYM) {
+                    // Handle treasure chest
+                    // Example: Increase score or provide rewards
+                    add_game_message(&message_queue, "You found a Treasure Chest!", COLOR_PAIR_HEALTH);
+                    // Implement further logic as needed
                 } else if (tile == FLOOR) {
                     // Check for traps
                     for (int i = 0; i < game_map->trap_count; i++) {
@@ -287,20 +316,20 @@ void print_full_map(struct Map* game_map, struct Point* character_location, stru
         for (int x = 0; x < MAP_WIDTH; x++) {
             char tile = game_map->grid[y][x];
 
-             if (character_location->x == x && character_location->y == y) {
+            if (character_location->x == x && character_location->y == y) {
                 // Determine the color for the player based on user settings
                 int player_color_pair = 0; // Default color pair (could be defined in your code)
 
                 if (manager->current_user) {
                     // Check the player's chosen color from settings
                     if (strcmp(manager->current_user->character_color, "Red") == 0) {
-                        player_color_pair = 9; // Assuming color pair 1 is Red
+                        player_color_pair = COLOR_PAIR_DAMAGE; // Example: Red
                     } else if (strcmp(manager->current_user->character_color, "Blue") == 0) {
-                        player_color_pair = 7; // Assuming color pair 2 is Blue
+                        player_color_pair = COLOR_PAIR_SPEED; // Example: Blue
                     } else if (strcmp(manager->current_user->character_color, "Green") == 0) {
-                        player_color_pair = 2; // Assuming color pair 3 is Green
+                        player_color_pair = COLOR_PAIR_HEALTH; // Example: Green
                     } else {
-                        player_color_pair = 20; // Default color is White (pair 4)
+                        player_color_pair = COLOR_PAIR_HEALTH; // Default color
                     }
                 }
 
@@ -338,48 +367,79 @@ void print_full_map(struct Map* game_map, struct Point* character_location, stru
 
             // Apply color and print based on tile type
             switch(tile) {
-                case TREASURE_CHEST:
-                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE)); // Use Treasure Room color
-                    mvaddch(y, x, TREASURE_CHEST);
+                case TREASURE_CHEST_SYM:
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE)); // Treasure Room color
+                    mvaddch(y, x, TREASURE_CHEST_SYM);
                     attroff(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE));
                     break;
-                    
+
+                case FOOD_NORMAL_SYM:
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_NORMAL));
+                    mvaddch(y, x, FOOD_NORMAL_SYM);
+                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_NORMAL));
+                    break;
+                case FOOD_GREAT_SYM:
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_ENCHANT));
+                    mvaddch(y, x, FOOD_GREAT_SYM);
+                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_ENCHANT));
+                    break;
+                case FOOD_MAGICAL_SYM:
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE));
+                    mvaddch(y, x, FOOD_MAGICAL_SYM);
+                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE));
+                    break;
+                case FOOD_ROTTEN_SYM:
+                    attron(COLOR_PAIR(COLOR_PAIR_DAMAGE));
+                    mvaddch(y, x, FOOD_ROTTEN_SYM);
+                    attroff(COLOR_PAIR(COLOR_PAIR_DAMAGE));
+                    break;
+
+                case GOLD_NORMAL_SYM:
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_NORMAL));
+                    mvaddch(y, x, GOLD_NORMAL_SYM);
+                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_NORMAL));
+                    break;
+                case GOLD_BLACK_SYM:
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_ENCHANT));
+                    mvaddch(y, x, GOLD_BLACK_SYM);
+                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_ENCHANT));
+                    break;
 
                 case DOOR_PASSWORD:
                     {
                         Room* door_room = find_room_by_position(game_map, x, y);
                         if (door_room && door_room->password_unlocked) {
                             // Green for unlocked door
-                            attron(COLOR_PAIR(2));
-                            mvaddch(y, x, '@');
-                            attroff(COLOR_PAIR(2));
+                            attron(COLOR_PAIR(COLOR_PAIR_HEALTH));
+                            mvaddch(y, x, DOOR_PASSWORD);
+                            attroff(COLOR_PAIR(COLOR_PAIR_HEALTH));
                         } else {
                             // Red for locked door
-                            attron(COLOR_PAIR(1));
-                            mvaddch(y, x, '@');
-                            attroff(COLOR_PAIR(1));
+                            attron(COLOR_PAIR(COLOR_PAIR_DAMAGE));
+                            mvaddch(y, x, DOOR_PASSWORD);
+                            attroff(COLOR_PAIR(COLOR_PAIR_DAMAGE));
                         }
                     }
                     break;
 
                 case ENEMY_FIRE_MONSTER:
-                    attron(COLOR_PAIR(16)); // Define a new color pair for enemies
+                    attron(COLOR_PAIR(COLOR_PAIR_SPEED)); // Define a new color pair for enemies
                     mvaddch(y, x, ENEMY_FIRE_MONSTER);
-                    attroff(COLOR_PAIR(16));
+                    attroff(COLOR_PAIR(COLOR_PAIR_SPEED));
                     break;
 
                 case TRAP_SYMBOL:
                     // Red for triggered traps
-                    attron(COLOR_PAIR(4));
+                    attron(COLOR_PAIR(COLOR_PAIR_DAMAGE));
                     mvaddch(y, x, tile);
-                    attroff(COLOR_PAIR(4));
+                    attroff(COLOR_PAIR(COLOR_PAIR_DAMAGE));
                     break;
 
                 case ANCIENT_KEY:
                     // Golden yellow for Ancient Key
-                    attron(COLOR_PAIR(8));
+                    attron(COLOR_PAIR(COLOR_PAIR_HEALTH));
                     mvaddstr(y, x, "▲");  // Unicode symbol
-                    attroff(COLOR_PAIR(8));
+                    attroff(COLOR_PAIR(COLOR_PAIR_HEALTH));
                     break;
 
                 case SECRET_DOOR_CLOSED:
@@ -780,21 +840,166 @@ void sight_range(struct Map* game_map, struct Point* character_location) {
     }
 }
 
-void add_food(struct Map* game_map) {
-    const int FOOD_COUNT = 10;  // Adjust as needed
-    int food_placed = 0;
-    
-    while (food_placed < FOOD_COUNT) {
-        int x = rand() % MAP_WIDTH;
-        int y = rand() % MAP_HEIGHT;
-        
-        // Place food only on floor tiles
-        if (game_map->grid[y][x] == FLOOR) {
-            game_map->grid[y][x] = FOOD;
-            food_placed++;
+void add_food(struct Map* map) {
+    if (map->food_count >= 100) return; // Prevent overflow
+
+    // Randomly decide the type of food to add
+    FoodType type = FOOD_NORMAL;
+    int rand_val = rand() % 100;
+    if (rand_val < 60) {
+        type = FOOD_NORMAL;
+    } else if (rand_val < 80) {
+        type = FOOD_GREAT;
+    } else if (rand_val < 95) {
+        type = FOOD_MAGICAL;
+    } else {
+        type = FOOD_ROTTEN;
+    }
+
+    // Find a random empty tile to place the food
+    int x, y;
+    bool placed = false;
+    for (int i = 0; i < 100; i++) { // Try 100 times
+        x = rand() % MAP_WIDTH;
+        y = rand() % MAP_HEIGHT;
+        if (map->grid[y][x] == FLOOR) {
+            // Place food
+            map->foods[map->food_count].type = type;
+            map->foods[map->food_count].position.x = x;
+            map->foods[map->food_count].position.y = y;
+            map->foods[map->food_count].spawn_time = time(NULL);
+            map->foods[map->food_count].consumed = false;
+
+            // Assign symbol based on food type
+            switch(type) {
+                case FOOD_NORMAL:
+                    map->grid[y][x] = FOOD_NORMAL_SYM;
+                    break;
+                case FOOD_GREAT:
+                    map->grid[y][x] = FOOD_GREAT_SYM;
+                    break;
+                case FOOD_MAGICAL:
+                    map->grid[y][x] = FOOD_MAGICAL_SYM;
+                    break;
+                case FOOD_ROTTEN:
+                    map->grid[y][x] = FOOD_ROTTEN_SYM;
+                    break;
+                default:
+                    map->grid[y][x] = FOOD_NORMAL_SYM;
+                    break;
+            }
+
+            map->food_count++;
+            placed = true;
+            break;
+        }
+    }
+
+    if (!placed) {
+        // Could not place food after 100 attempts
+        // Optionally, handle this scenario
+        printf("Warning: Failed to place food after 100 attempts.\n");
+    }
+}
+
+// Function to handle food consumption
+void handle_food_consumption(Player* player, struct Map* map, struct MessageQueue* message_queue) {
+    struct Point pos = player->location;
+    for (int i = 0; i < map->food_count; i++) {
+        if (!map->foods[i].consumed && map->foods[i].position.x == pos.x && map->foods[i].position.y == pos.y) {
+            // Consume the food
+            FoodType type = map->foods[i].type;
+            map->foods[i].consumed = true;
+            map->grid[pos.y][pos.x] = FLOOR; // Remove food symbol from map
+
+            char message[100];
+            switch(type) {
+                case FOOD_NORMAL:
+                    player->hitpoints += 20;
+                    snprintf(message, sizeof(message), "You ate Normal Food: +20 HP.");
+                    add_game_message(message_queue, message, COLOR_PAIR_HEALTH); // Green color
+                    break;
+                case FOOD_GREAT:
+                    player->hitpoints += 10;
+                    // Add temporary damage boost
+                    player->temporary_damage += 5;
+                    player->temporary_damage_timer = time(NULL) + 30; // e.g., 30 seconds
+                    snprintf(message, sizeof(message), "You ate Great Food: +10 HP and +5 Damage (30s).");
+                    add_game_message(message_queue, message, COLOR_PAIR_SPEED); // Yellow color
+                    break;
+                case FOOD_MAGICAL:
+                    player->hitpoints += 10;
+                    // Add temporary speed boost
+                    player->temporary_speed += 1;
+                    player->temporary_speed_timer = time(NULL) + 30; // e.g., 30 seconds
+                    snprintf(message, sizeof(message), "You ate Magical Food: +10 HP and +Speed (30s).");
+                    add_game_message(message_queue, message, COLOR_PAIR_SPEED); // Green color
+                    break;
+                case FOOD_ROTTEN:
+                    player->hitpoints -= 5;
+                    snprintf(message, sizeof(message), "You ate Rotten Food: -5 HP.");
+                    add_game_message(message_queue, message, COLOR_PAIR_DAMAGE); // Red color
+                    break;
+                default:
+                    // Handle unknown food types
+                    break;
+            }
+
+            // Clamp hitpoints to a maximum value, e.g., 100
+            if (player->hitpoints > 100) player->hitpoints = 100;
+            if (player->hitpoints < 0) player->hitpoints = 0;
+
+            break; // Assuming only one food item per tile
         }
     }
 }
+
+// Function to update food items (transformations)
+void update_food_items(struct Map* map, struct MessageQueue* message_queue) {
+    time_t current_time = time(NULL);
+    for (int i = 0; i < map->food_count; i++) {
+        if (map->foods[i].consumed) continue;
+
+        FoodType type = map->foods[i].type;
+        time_t elapsed = current_time - map->foods[i].spawn_time;
+
+        // Define transformation times (in seconds)
+        // For example, after 60 seconds, transform Great and Magical to Normal
+        // and Normal to Rotten
+        if (type == FOOD_GREAT || type == FOOD_MAGICAL) {
+            if (elapsed >= 60 && elapsed < 120) {
+                // Transform Great/Magical to Normal
+                map->foods[i].type = FOOD_NORMAL;
+                map->grid[map->foods[i].position.y][map->foods[i].position.x] = 'F';
+                char message[100];
+                snprintf(message, sizeof(message), "Food at (%d, %d) has transformed to Normal Food.", 
+                         map->foods[i].position.x, map->foods[i].position.y);
+                add_game_message(message_queue, message, 14); // Yellow color
+            }
+            else if (elapsed >= 120) {
+                // Transform Normal to Rotten
+                map->foods[i].type = FOOD_ROTTEN;
+                map->grid[map->foods[i].position.y][map->foods[i].position.x] = 'F';
+                char message[100];
+                snprintf(message, sizeof(message), "Food at (%d, %d) has spoiled into Rotten Food.", 
+                         map->foods[i].position.x, map->foods[i].position.y);
+                add_game_message(message_queue, message, 7); // Red color
+            }
+        }
+        else if (type == FOOD_NORMAL) {
+            if (elapsed >= 120) {
+                // Transform Normal to Rotten
+                map->foods[i].type = FOOD_ROTTEN;
+                map->grid[map->foods[i].position.y][map->foods[i].position.x] = 'F';
+                char message[100];
+                snprintf(message, sizeof(message), "Food at (%d, %d) has spoiled into Rotten Food.", 
+                         map->foods[i].position.x, map->foods[i].position.y);
+                add_game_message(message_queue, message, 7); // Red color
+            }
+        }
+    }
+}
+
 
 void showCorridorVisibility(struct Map* game_map, int x, int y) {
     // Use SIGHT_RANGE directly from game.h
@@ -901,11 +1106,44 @@ void print_map(struct Map* game_map,
 
             // Apply color and print based on tile type
             switch(tile) {
-                case TREASURE_CHEST:
-                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE)); // Use Treasure Room color
-                    mvaddch(y, x, TREASURE_CHEST);
+                case 'T':  // Normal Food
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_NORMAL));
+                    mvaddch(y, x, tile);
+                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_NORMAL));
+                    break;
+                case 'G':  // Great Food
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_ENCHANT));
+                    mvaddch(y, x, tile);
+                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_ENCHANT));
+                    break;
+                case 'M':  // Magical Food
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE));
+                    mvaddch(y, x, tile);
                     attroff(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE));
                     break;
+                case 'R':  // Rotten Food
+                    attron(COLOR_PAIR(COLOR_PAIR_DAMAGE));
+                    mvaddch(y, x, tile);
+                    attroff(COLOR_PAIR(COLOR_PAIR_DAMAGE));
+                    break;
+
+                case '$':  // Normal Gold
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_NORMAL));
+                    mvaddch(y, x, tile);
+                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_NORMAL));
+                    break;
+                case 'B':  // Black Gold
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_ENCHANT));
+                    mvaddch(y, x, tile);
+                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_ENCHANT));
+                    break;
+
+
+                // case TREASURE_CHEST:
+                //     attron(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE)); // Use Treasure Room color
+                //     mvaddch(y, x, TREASURE_CHEST);
+                //     attroff(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE));
+                //     break;
 
 
                 case ENEMY_FIRE_MONSTER:
@@ -1374,6 +1612,10 @@ void move_character(Player* player, int key, struct Map* game_map, int* hitpoint
 
     handle_spell_pickup(player, game_map, new_location, message_queue);
 
+    handle_food_consumption(player, game_map, message_queue);
+    handle_gold_collection(player, game_map, message_queue);
+
+
     // -----------------------------------------------------------
     // 3) Trap logic: If we just moved onto a trap location, trigger damage
     // -----------------------------------------------------------
@@ -1516,6 +1758,7 @@ void update_password_display() {
 }
 
 void init_map(struct Map* map) {
+    // Initialize the grid and visibility
     for (int y = 0; y < MAP_HEIGHT; y++) {
         for (int x = 0; x < MAP_WIDTH; x++) {
             map->grid[y][x] = FOG;
@@ -1523,10 +1766,36 @@ void init_map(struct Map* map) {
             map->discovered[y][x] = false;
         }
     }
+
+    // Initialize counts for rooms, traps, enemies, etc.
     map->room_count = 0;
-    map->trap_count = 0; // Initialize trap count
+    map->trap_count = 0;  // Initialize trap count
     map->enemy_count = 0;
+
+    // Initialize gold array
+    map->gold_count = 0;  // Number of golds
+    for (int i = 0; i < MAX_GOLDS; i++) {
+        map->golds[i].type = GOLD_NORMAL; // Default type
+        map->golds[i].collected = false; 
+        map->golds[i].position.x = -1;   // Default invalid position
+        map->golds[i].position.y = -1;   // Default invalid position
+    }
+
+    // Initialize food array
+    map->food_count = 0;
+    for (int i = 0; i < 100; i++) {
+        map->foods[i].type = FOOD_NORMAL;
+        map->foods[i].consumed = false;
+        map->foods[i].position.x = -1;
+        map->foods[i].position.y = -1;
+        map->foods[i].spawn_time = 0;
+    }
+    
+    // Initialize other map attributes as needed
+    map->last_hunger_decrease = time(NULL);
+    map->last_attack_time = time(NULL);
 }
+
 
 bool rooms_overlap(const struct Room* r1, const struct Room* r2) {
     return !(r1->right_wall + MIN_ROOM_DISTANCE < r2->left_wall ||
@@ -1535,21 +1804,135 @@ bool rooms_overlap(const struct Room* r1, const struct Room* r2) {
              r2->top_wall + MIN_ROOM_DISTANCE < r1->bottom_wall);
 }
 
-void add_gold(struct Map* game_map) {
-    const int GOLD_COUNT = 10;  // Adjust as needed
-    int gold_placed = 0;
-    
-    while (gold_placed < GOLD_COUNT) {
-        int x = rand() % MAP_WIDTH;
-        int y = rand() % MAP_HEIGHT;
-        
-        // Place gold only on floor tiles
-        if (game_map->grid[y][x] == FLOOR) {
-            game_map->grid[y][x] = GOLD;  // Assume GOLD is defined, e.g., `#define GOLD '$'`
-            gold_placed++;
+void add_gold(struct Map* map) {
+    if (map->gold_count >= MAX_GOLDS) return; // Prevent overflow
+
+    // Randomly decide the type of gold to add
+    GoldType type = GOLD_NORMAL;
+    int rand_val = rand() % 100;
+    if (rand_val < 90) {
+        type = GOLD_NORMAL;
+    } else {
+        type = GOLD_BLACK;
+    }
+
+    // Find a random empty tile to place the gold
+    int x, y;
+    bool placed = false;
+    for (int i = 0; i < 100; i++) { // Try 100 times
+        x = rand() % MAP_WIDTH;
+        y = rand() % MAP_HEIGHT;
+        if (map->grid[y][x] == FLOOR) {
+            // Place gold
+            map->golds[map->gold_count].type = type;
+            map->golds[map->gold_count].position.x = x;
+            map->golds[map->gold_count].position.y = y;
+            map->golds[map->gold_count].collected = false;
+
+            // Assign symbol based on gold type
+            switch(type) {
+                case GOLD_NORMAL:
+                    map->grid[y][x] = GOLD_NORMAL_SYM;
+                    break;
+                case GOLD_BLACK:
+                    map->grid[y][x] = GOLD_BLACK_SYM;
+                    break;
+                default:
+                    map->grid[y][x] = GOLD_NORMAL_SYM;
+                    break;
+            }
+
+            map->gold_count++;
+            placed = true;
+            break;
+        }
+    }
+
+    if (!placed) {
+        // Could not place gold after 100 attempts
+        // Optionally, handle this scenario
+        printf("Warning: Failed to place gold after 100 attempts.\n");
+    }
+}
+
+// Function to handle gold collection
+void handle_gold_collection(Player* player, struct Map* map, struct MessageQueue* message_queue) {
+    struct Point pos = player->location;
+    for (int i = 0; i < map->gold_count; i++) {
+        if (i >= MAX_GOLDS) {
+            printf("Error: Gold index out of bounds: %d\n", i);
+            continue;
+        }
+
+        if (!map->golds[i].collected && map->golds[i].position.x == pos.x && map->golds[i].position.y == pos.y) {
+            // Collect the gold
+            GoldType type = map->golds[i].type;
+            map->golds[i].collected = true;
+            map->grid[pos.y][pos.x] = FLOOR; // Remove gold symbol from map
+
+            if (type == GOLD_NORMAL) {
+                int gold_amount = rand() % 100 + 1; // Random between 1 and 100
+                player->score += gold_amount;
+                char message[100];
+                snprintf(message, sizeof(message), "You collected Normal Gold: +%d Gold.", gold_amount);
+                add_game_message(message_queue, message, COLOR_PAIR_HEALTH); // Green color
+            }
+            else if (type == GOLD_BLACK) {
+                int gold_amount = (rand() % 100 + 1) * 2; // Twice normal gold
+                player->score += gold_amount;
+                char message[100];
+                snprintf(message, sizeof(message), "You collected Black Gold: +%d Gold.", gold_amount);
+                add_game_message(message_queue, message, COLOR_PAIR_SPEED); // Blue color
+            }
+
+            break; // Assuming only one gold item per tile
         }
     }
 }
+
+// Function to update hunger rate and health regeneration
+void update_hunger_and_health(Player* player, struct Map* map, struct MessageQueue* message_queue) {
+    time_t current_time = time(NULL);
+
+    // Check if 40 seconds have passed since last hunger decrease
+    if (difftime(current_time, map->last_hunger_decrease) >= 40.0) {
+        // Decrease hunger rate at a constant speed, e.g., decrease by 1
+        if (player->hunger_rate > 0) {
+            player->hunger_rate -= 1;
+            map->last_hunger_decrease = current_time;
+            char message[100];
+            snprintf(message, sizeof(message), "Hunger rate decreased by 1.");
+            add_game_message(message_queue, message, 14); // Yellow color
+        }
+    }
+
+    // Handle health regeneration if hunger rate is 0 and some time has passed since last attack
+    if (player->hunger_rate == 0) {
+        if (difftime(current_time, map->last_attack_time) >= 60.0) { // e.g., 60 seconds since last attack
+            player->hitpoints += 1; // Slowly increase hitpoints
+            if (player->hitpoints > 100) player->hitpoints = 100;
+            char message[100];
+            snprintf(message, sizeof(message), "Health regenerates by 1 HP.");
+            add_game_message(message_queue, message, 2); // Green color
+        }
+    }
+
+    // Handle temporary effects expiration
+    if (player->temporary_damage > 0 && difftime(current_time, player->temporary_damage_start_time) >= 30.0) {
+        player->temporary_damage = 0;
+        char message[100];
+        snprintf(message, sizeof(message), "Temporary damage boost has worn off.");
+        add_game_message(message_queue, message, 14); // Yellow color
+    }
+
+    if (player->temporary_speed > 0 && difftime(current_time, player->temporary_speed_start_time) >= 30.0) {
+        player->temporary_speed = 0;
+        char message[100];
+        snprintf(message, sizeof(message), "Temporary speed boost has worn off.");
+        add_game_message(message_queue, message, 14); // Yellow color
+    }
+}
+
 
 bool isPointInRoom(struct Point* point, struct Room* room) {
     return (point->x >= room->left_wall && point->x <= room->right_wall &&
@@ -1688,7 +2071,7 @@ void place_room(struct Map* map, struct Room* room) {
         // Example: Place a treasure chest symbol at the center
         int center_x = (room->left_wall + room->right_wall) / 2;
         int center_y = (room->top_wall + room->bottom_wall) / 2;
-        map->grid[center_y][center_x] = TREASURE_CHEST; // Define TREASURE_CHEST, e.g., '#'
+        map->grid[center_y][center_x] = TREASURE_CHEST_SYM; // Define TREASURE_CHEST, e.g., '#'
     }
 }
 
@@ -2686,6 +3069,7 @@ void update_enemies(struct Map* map, Player* player, int* hitpoints, struct Mess
         // Check for adjacent enemy and deal damage
         if (is_adjacent(player->location, enemy->position)) {
             *hitpoints -= enemy->hp;
+            map->last_attack_time = time(NULL);
             char damage_msg[100];
             snprintf(damage_msg, sizeof(damage_msg), "An enemy attacked you! Damage: %d", enemy->hp);
             add_game_message(message_queue, damage_msg, 7);  // Red color
@@ -3073,4 +3457,23 @@ void use_weapon(Player* player, struct Map* map, struct MessageQueue* message_qu
     }
 }
 
+void update_temporary_effects(Player* player, struct Map* map, struct MessageQueue* message_queue) {
+    time_t current_time = time(NULL);
+
+    // Handle temporary damage boost
+    if (player->temporary_damage > 0 && difftime(current_time, player->temporary_damage_start_time) >= 30.0) {
+        player->temporary_damage = 0;
+        char message[100];
+        snprintf(message, sizeof(message), "Temporary damage boost has worn off.");
+        add_game_message(message_queue, message, 14); // Yellow color
+    }
+
+    // Handle temporary speed boost
+    if (player->temporary_speed > 0 && difftime(current_time, player->temporary_speed_start_time) >= 30.0) {
+        player->temporary_speed = 0;
+        char message[100];
+        snprintf(message, sizeof(message), "Temporary speed boost has worn off.");
+        add_game_message(message_queue, message, 14); // Yellow color
+    }
+}
 

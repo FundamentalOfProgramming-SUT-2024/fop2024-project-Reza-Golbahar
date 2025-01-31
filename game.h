@@ -25,8 +25,6 @@
 #define WINDOW              '='
 #define STAIRS              '>'
 #define FOG                 ' '
-#define GOLD                '$'
-#define FOOD                'T'
 #define TRAP_SYMBOL         '^'
 #define PLAYER_CHAR         'P'
 
@@ -65,7 +63,6 @@
 #define SPELL_SPEED  '7'
 #define SPELL_DAMAGE '8'
 
-#define TREASURE_CHEST 'T'
 
 // Maximum number of weapons a player can carry
 #define MAX_WEAPONS         10
@@ -84,6 +81,21 @@
 #define MAX_DOORS           4
 #define WINDOW_CHANCE       20
 #define SIGHT_RANGE         5
+
+
+#define GOLD_NORMAL_SYM     '$'
+#define GOLD_BLACK_SYM      'B'
+#define FOOD_NORMAL_SYM     'T'
+#define FOOD_GREAT_SYM      'G'
+#define FOOD_MAGICAL_SYM    'M'
+#define FOOD_ROTTEN_SYM     'R'
+#define TREASURE_CHEST_SYM  'C'
+
+
+
+
+#define MAX_GOLDS           100
+
 
 // Utility macros
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
@@ -107,6 +119,35 @@ typedef enum {
     ENEMY_UNDEAD,
     // Future enemy types can be added here
 } EnemyType;
+
+typedef enum {
+    FOOD_NORMAL,
+    FOOD_GREAT,
+    FOOD_MAGICAL,
+    FOOD_ROTTEN
+} FoodType;
+
+// Gold Types
+typedef enum {
+    GOLD_NORMAL,
+    GOLD_BLACK
+} GoldType;
+
+// Food Structure
+typedef struct Food {
+    FoodType type;
+    struct Point position;
+    time_t spawn_time;        // Time when the food was placed on the map
+    bool consumed;            // Flag to indicate if the food has been consumed
+} Food;
+
+// Gold Structure
+typedef struct Gold {
+    GoldType type;
+    struct Point position;
+    bool collected;           // Flag to indicate if the gold has been collected
+} Gold;
+
 
 
 typedef struct Enemy {
@@ -174,6 +215,17 @@ struct Map {
     // Enemies
     Enemy enemies[MAX_ENEMIES];
     int enemy_count;
+
+    Food foods[100];
+    int food_count;
+
+    // Gold Items
+    Gold golds[100];
+    int gold_count;
+
+    // Timers for hunger and health regeneration
+    time_t last_hunger_decrease;
+    time_t last_attack_time;
 };
 
 // Weapon structure
@@ -221,7 +273,15 @@ typedef struct Player {
     Spell spells[MAX_SPELLS];
     int spell_count;
     
-    // ... [other player attributes]
+    // Temporary Effects
+    int temporary_damage;
+    time_t temporary_damage_start_time;
+
+    int temporary_speed;
+    time_t temporary_speed_start_time;
+
+    time_t temporary_damage_timer;
+    time_t temporary_speed_timer; 
 } Player;
 
 
@@ -275,7 +335,6 @@ void place_room(struct Map* map, struct Room* room);
 void place_stairs(struct Map* map);
 void place_pillars(struct Map* map, struct Room* room);
 void place_windows(struct Map* map, struct Room* room);
-void add_food(struct Map* map);
 bool validate_stair_placement(struct Map* map);
 bool prompt_for_password_door(Room* door_room);
 void place_secret_doors(struct Map* map);
@@ -289,7 +348,6 @@ void list_saved_games(struct UserManager* manager);
 
 // Room connectivity
 void connect_rooms_with_corridors(struct Map* map);
-void add_gold(struct Map* game_map);
 bool canSeeRoomThroughWindow(struct Map* game_map, struct Room* room1, struct Room* room2);
 
 // Movement and visibility
@@ -351,5 +409,19 @@ void throw_dagger(Player* player, Weapon* weapon, struct Map* map, struct Messag
 void deal_damage_to_enemy(struct Map* map, int x, int y, int damage, struct MessageQueue* message_queue);
 bool is_valid_tile(int x, int y);
 bool is_adjacent(struct Point p1, struct Point p2);
+
+// Function Declarations for Food
+void add_food(struct Map* map);
+void handle_food_consumption(Player* player, struct Map* map, struct MessageQueue* message_queue);
+void update_food_items(struct Map* map, struct MessageQueue* message_queue);
+
+// Function Declarations for Gold
+void add_gold(struct Map* map);
+void handle_gold_collection(Player* player, struct Map* map, struct MessageQueue* message_queue);
+
+// Hunger and Health Mechanics
+void update_hunger_and_health(Player* player, struct Map* map, struct MessageQueue* message_queue);
+// Ensure this is in game.c
+void update_temporary_effects(Player* player, struct Map* map, struct MessageQueue* message_queue);
 
 #endif

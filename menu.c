@@ -37,7 +37,12 @@ bool init_ncurses(void) {
     init_pair(17, COLOR_MAGENTA, COLOR_BLACK); // Demon
     init_pair(18, COLOR_YELLOW, COLOR_BLACK);  // Giant
     init_pair(19, COLOR_GREEN, COLOR_BLACK);   // Snake
-    init_pair(21, COLOR_CYAN, COLOR_BLACK);    // Undead
+    //init_pair(21, COLOR_CYAN, COLOR_BLACK);    // Undead
+
+    // Define new color pairs for items
+    init_pair(21, COLOR_MAGENTA, COLOR_BLACK); // Food
+    init_pair(22, COLOR_YELLOW, COLOR_BLACK);  // Normal Gold
+    init_pair(23, COLOR_WHITE, COLOR_BLACK);   // Black Gold
 
     init_pair(20, COLOR_WHITE, COLOR_BLACK);  // Do not change Player COlor
 
