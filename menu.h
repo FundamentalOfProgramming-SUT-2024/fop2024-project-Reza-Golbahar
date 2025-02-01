@@ -29,7 +29,7 @@ void login_menu(struct UserManager* manager);
 void register_menu(struct UserManager* manager);
 void game_menu(struct UserManager* manager);
 void print_user_profile(struct UserManager *manager, int user_index);
-
+void play_music(int song_choice);
 
 
 #endif

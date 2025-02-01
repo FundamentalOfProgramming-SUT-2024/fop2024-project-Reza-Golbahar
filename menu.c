@@ -243,6 +243,9 @@ void adding_new_user(struct UserManager* manager) {
         strncpy(manager->usernames[manager->user_count], username, MAX_STRING_LEN - 1);
         manager->usernames[manager->user_count][MAX_STRING_LEN - 1] = '\0';
 
+        new_user->song = 1;  // default = 1
+        play_music(new_user->song);
+
         // Write user data to JSON
         FILE* file = fopen("users.json", "a"); // Open in append mode
         if (file) {
@@ -445,6 +448,9 @@ void settings(struct UserManager* manager) {
     // Save updated settings to JSON
     save_users_to_json(manager);
 
+    // Also optionally: play the new chosen song
+    play_music(manager->current_user->song);
+
     mvprintw(13, 0, "Settings saved successfully!");
     refresh();
     getch();
@@ -456,6 +462,7 @@ void login_menu(struct UserManager* manager) {
     int selected_index = users_menu(manager);
     if (selected_index > 0) {
         if (entering_menu(manager, selected_index)) {
+            play_music(manager->current_user->song);  // <-- Play the chosen song
             pre_game_menu(manager);
         }
     }
@@ -510,14 +517,23 @@ void pre_game_menu(struct UserManager* manager) {
                 print_map(&new_map, visible, start_pos, manager);
 
                 // Start the game
-                play_game(manager, &new_map, &start_pos, 0);
+                struct SavedGame saved;
+                if (load_saved_game(manager, &saved)) {
+                    // Overwrite current map and player with saved data
+                    struct Map loaded_map = saved.game_map;
+                    Player loaded_player = saved.player;
+                    int loaded_level = saved.current_level;
+
+                    // Now call play_game with these:
+                    play_game(manager, &loaded_map, &loaded_player.location, loaded_player.score);
+                    }
                 break;
             }
             case '2':
                 //list_saved_games(manager);
                 struct SavedGame saved;
                 if (load_saved_game(manager, &saved)) {
-                    play_game(manager, &saved.game_map, &saved.character_location, saved.score);
+                    //play_game(manager, &saved.game_map, &saved.character_location, saved.score);
                 }
                 break;
             case '3':
@@ -595,3 +611,25 @@ void print_user_profile(struct UserManager *manager, int user_index) {
     getch(); // Wait for user to press any key
 }
 
+void play_music(int song_choice) {
+    // Example: store your audio files in "audio/" directory
+    // You must ensure these files exist and your system has a CLI player.
+    // For example, on Linux you might have "mpg123" or "cvlc".
+    // On Windows, you might use "start /min" or a different approach.
+
+    switch (song_choice) {
+        case 1:
+            system("cvlc --play-and-exit audio/venom.mp3 &"); 
+            // or "start /min wmplayer \"audio\\venom.mp3\""
+            break;
+        case 2:
+            system("cvlc --play-and-exit audio/rap_god.mp3 &"); 
+            break;
+        case 3:
+            system("cvlc --play-and-exit audio/hello.mp3 &"); 
+            break;
+        default:
+            // If an invalid choice, do nothing or default
+            break;
+    }
+}

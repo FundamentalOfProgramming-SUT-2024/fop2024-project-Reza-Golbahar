@@ -53,22 +53,12 @@ void initialize_player(Player* player, struct Point start_location) {
 }
 
 void play_game(struct UserManager* manager, struct Map* game_map, 
-               struct Point* character_location, int initial_score) {
+               Player* player, int initial_score) {
     const int max_level = 4;  // Define maximum levels
     int current_level = 1;    // Start at level 1
     bool game_running = true;
 
     bool show_map = false;
-
-    // Initialize player attributes
-    Player player;
-    initialize_player(&player, game_map->initial_position);
-
-    //it was at generate_map before
-    add_food(game_map, &player);
-    add_gold(game_map, &player);
-    add_weapons(game_map, &player);
-
 
     const int MAX_HUNGER = 100;     // Threshold for hunger affecting hitpoints
     const int HUNGER_INCREASE_INTERVAL = 50; // Frames for hunger to increase
@@ -87,9 +77,13 @@ void play_game(struct UserManager* manager, struct Map* game_map,
     game_map->last_hunger_decrease = time(NULL);
     game_map->last_attack_time = time(NULL);
 
+    // Keep track of the last direction used for ranged shots
+    static int last_dx = 0;
+    static int last_dy = 0;
+
     // Initialize visibility array (all tiles hidden initially)
     bool visible[MAP_HEIGHT][MAP_WIDTH] = {0}; 
-    visible[character_location->y][character_location->x] = 1; // Start position is visible
+    visible[player->location.y][player->location.x] = true;
 
     // Message Queue for game messages
     struct MessageQueue message_queue = { .count = 0 };
@@ -99,12 +93,11 @@ void play_game(struct UserManager* manager, struct Map* game_map,
 
         if (show_map) {
             // Display the entire map
-            print_full_map(game_map, character_location, manager);
+            print_full_map(game_map, &player, manager);
         } else {
             // Update visibility based on player's field of view
-            update_visibility(game_map, character_location, visible);
-            // Display only visible parts of the map
-            print_map(game_map, visible, *character_location, manager);
+            update_visibility(game_map, &player->location, visible);
+            print_map(game_map, visible, player->location, manager);
         }
 
         // Render enemies
@@ -121,6 +114,12 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             }
         }
         
+        mvprintw(MAP_HEIGHT + 1, 0, 
+            "Score: %d   HP: %d   Player: %s",
+            player->score,
+            player->hitpoints,
+            manager->current_user ? manager->current_user->username : "Guest");
+        
         // Show game info
         if (player.equipped_weapon != -1) {
         mvprintw(MAP_HEIGHT + 2, 0, "Level: %d                             Equipped Weapon: %s (Damage: %d)",
@@ -129,13 +128,6 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         } else {
             mvprintw(MAP_HEIGHT + 2, 0, "Level: %d                             Equipped Weapon: None"
                     ,current_level);
-        }
-        if (manager->current_user) {
-        mvprintw(MAP_HEIGHT +3, 0, "Score: %d               Hitpoints: %d                  Player: %s", 
-                player.score, player.hitpoints, manager->current_user->username);
-        } else {
-            mvprintw(MAP_HEIGHT + 3, 0, "Score: %d               Hitpoints: %d                  Player: Guest",
-                    player.score, player.hitpoints);
         }
         mvprintw(MAP_HEIGHT + 4, 0, "Controls: Arrow Keys to Move, 'i' - Weapon Inventory, 'e' - General Inventory, 'q' - Quit g-save");
         refresh();
@@ -172,24 +164,22 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             add_gold(game_map, &player);
             last_item_add_time = time(NULL);
         }
-        update_temporary_effects(&player, game_map, &message_queue);
+        update_temporary_effects(player, game_map, &message_queue);
 
         update_password_display();
 
         // Update hunger rate and health regeneration
-        update_hunger_and_health(&player, game_map, &message_queue);
+        update_hunger_and_health(player, game_map, &message_queue);
 
         // Update enemies
-        update_enemies(game_map, &player, &message_queue);
+        update_enemies(game_map, player, &message_queue);
 
         // Display messages
         draw_messages(&message_queue, 0, MAP_WIDTH+1);
         update_messages(&message_queue);
         
-        update_food_inventory(&player, &message_queue);
+        update_food_inventory(player, &message_queue);
         // Handle input
-
-
 
         
         int key = getch();
@@ -198,7 +188,6 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             continue;  // Skip the rest of the loop to refresh the display
         }
         if (key=='g'){
-            manager->current_user->gold = player.gold_count;
             if (manager->current_user)
                 save_current_game(manager, game_map, &player, current_level);
         }
@@ -208,10 +197,9 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             case KEY_LEFT:
             case KEY_RIGHT:
                 // Move the character
-                move_character(&player, key, game_map, &player.hitpoints, &message_queue);
-                *character_location = player.location; // Synchronize positions
+                move_character(player, key, game_map, &player.hitpoints, &message_queue);
 
-                update_enemies(game_map, &player, &message_queue);
+                update_enemies(game_map, player, &message_queue);
                 // Check the tile the player moves onto
                 char tile = game_map->grid[character_location->y][character_location->x];
 
@@ -250,7 +238,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                     // Collect food
                 } else if (tile == GOLD_NORMAL_SYM || tile == GOLD_BLACK_SYM) {
                     // Collect gold
-                    handle_gold_collection(&player, game_map, &message_queue);
+                    handle_gold_collection(player, game_map, &message_queue);
                 } else if (tile == TREASURE_CHEST_SYM) {
                     // Handle treasure chest
                     // Example: Increase score or provide rewards
@@ -278,32 +266,55 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             case 'E':
                 // Open inventory menu
                 //open_inventory_menu(&player, &message_queue);
-                open_food_inventory_menu(&player, &message_queue);
+                open_food_inventory_menu(player, &message_queue);
                 break;
 
             case 'a':
             case 'A':
-                // Attack using the equipped weapon
-                use_weapon(&player, game_map, &message_queue);
+                if (player->equipped_weapon != -1) {
+                    Weapon* w = &player.weapons[player->equipped_weapon];
+                    if (w->type == MELEE) {
+                        // Melee usage
+                        use_melee_weapon(player, w, game_map, &message_queue);
+                    } else {
+                        // Ranged usage - ask user for direction every time
+                        throw_ranged_weapon_with_drop(player, w, game_map, &message_queue,
+                                                    last_dx, last_dy);
+                    }
+                }
                 break;
-
+            
             case 'i':
             case 'I':
                 // Open the weapon inventory menu
                 open_weapon_inventory_menu(&player, game_map, &message_queue);
                 break;
 
+            case ' ': // SPACE
+                // Use or shoot the currently equipped weapon
+                if (player.equipped_weapon != -1) {
+                    Weapon* w = &player.weapons[player.equipped_weapon];
+                    if (w->type == MELEE) {
+                        // Melee usage
+                        use_melee_weapon(&player, w, game_map, &message_queue);
+                    } else {
+                        // Ranged usage - ask user for direction every time
+                        ask_ranged_direction(&last_dx, &last_dy, w->name);
+                        throw_ranged_weapon_with_drop(&player, w, game_map, &message_queue,
+                                                    last_dx, last_dy);
+                    }
+                }
+                break;
+
             case 's':
             case 'S':
                 // Open spell inventory menu
-                open_spell_inventory_menu(game_map, &player);
+                open_spell_inventory_menu(game_map, player, &message_queue);
                 break;
 
             case 'q':
-                if (manager->current_user)
-                    manager->current_user->gold = player.gold_count;
-
-                    save_current_game(manager, game_map, &player, current_level);
+                if(manager->current_user)
+                    save_current_game(manager, game_map, player, current_level);
 
                 game_running = false;
                 break;
@@ -572,6 +583,14 @@ struct Map generate_map(struct Room* previous_room, int current_level, int max_l
     // Place secret doors (if applicable)
     place_secret_doors(&map);
 
+        // Initialize player attributes
+    Player player;
+    initialize_player(&player, game_map->initial_position);
+
+    add_food(&map, &player);
+    add_gold(&map, &player);
+    add_weapons(&map, &player);
+
     // Spawn items and features
     add_traps(&map);
     add_spells(&map);
@@ -668,83 +687,83 @@ void add_traps(struct Map* game_map) {
     }
 }
 
-void open_inventory_menu(Player* player, struct MessageQueue* message_queue){
-    bool menu_open = true;
+// void open_inventory_menu(Player* player, struct MessageQueue* message_queue){
+//     bool menu_open = true;
 
-    while (menu_open) {
-        clear();
-        mvprintw(0, 0, "General Inventory");
+//     while (menu_open) {
+//         clear();
+//         mvprintw(0, 0, "General Inventory");
 
-        // 1) Show food inventory
-        mvprintw(2, 0, "Food Inventory:");
-        if (player->food_count == 0) {
-            mvprintw(3, 2, "No food items.");
-        } else {
-            for (int i = 0; i < player->food_count; i++) {
-                mvprintw(3 + i, 2, "Food Slot %d", i + 1);
-            }
-        }
+//         // 1) Show food inventory
+//         mvprintw(2, 0, "Food Inventory:");
+//         if (player->food_count == 0) {
+//             mvprintw(3, 2, "No food items.");
+//         } else {
+//             for (int i = 0; i < player->food_count; i++) {
+//                 mvprintw(3 + i, 2, "Food Slot %d", i + 1);
+//             }
+//         }
 
-        // 2) Show gold count
-        mvprintw(5 + player->food_count, 0, "Gold Collected: %d", player->gold_count);
+//         // 2) Show gold count
+//         mvprintw(5 + player->food_count, 0, "Gold Collected: %d", player->gold_count);
 
-        // 3) Show Ancient Key info
-        mvprintw(6 + player->food_count, 0, "Ancient Keys (working): %d", player->ancient_key_count);
-        mvprintw(7 + player->food_count, 0, "Broken Key Pieces: %d", player->broken_key_count);
+//         // 3) Show Ancient Key info
+//         mvprintw(6 + player->food_count, 0, "Ancient Keys (working): %d", player->ancient_key_count);
+//         mvprintw(7 + player->food_count, 0, "Broken Key Pieces: %d", player->broken_key_count);
 
-        // 4) Instructions
-        mvprintw(9 + player->food_count, 0, "Options:");
-        mvprintw(10 + player->food_count, 2, "u <number> - Use food");
-        mvprintw(11 + player->food_count, 2, "c         - Combine broken keys");
-        mvprintw(12 + player->food_count, 2, "q         - Quit inventory");
-        refresh();
+//         // 4) Instructions
+//         mvprintw(9 + player->food_count, 0, "Options:");
+//         mvprintw(10 + player->food_count, 2, "u <number> - Use food");
+//         mvprintw(11 + player->food_count, 2, "c         - Combine broken keys");
+//         mvprintw(12 + player->food_count, 2, "q         - Quit inventory");
+//         refresh();
 
-        // Handle input
-        int key = getch();
-        if (key == 'q' || key == 'Q') {
-            menu_open = false;
-            continue;
-        }
+//         // Handle input
+//         int key = getch();
+//         if (key == 'q' || key == 'Q') {
+//             menu_open = false;
+//             continue;
+//         }
 
-        switch (tolower(key)) {
-            case 'u': {
-                // Using food from a slot
-                mvprintw(14, 0, "Enter food slot number to use (1-%d): ", player->food_count);
-                refresh();
-                char input[10];
-                echo();
-                getnstr(input, sizeof(input) - 1);
-                noecho();
+//         switch (tolower(key)) {
+//             case 'u': {
+//                 // Using food from a slot
+//                 mvprintw(14, 0, "Enter food slot number to use (1-%d): ", player->food_count);
+//                 refresh();
+//                 char input[10];
+//                 echo();
+//                 getnstr(input, sizeof(input) - 1);
+//                 noecho();
 
-                int slot = atoi(input) - 1; // Convert to 0-based index
+//                 int slot = atoi(input) - 1; // Convert to 0-based index
 
-                if (slot >= 0 && slot < player->food_count) {
-                    consume_food(player, slot, message_queue);
-                } else {
-                    add_game_message(message_queue, "Invalid food slot number!", 7); // Red color
-                }
-                break;
-            }
+//                 if (slot >= 0 && slot < player->food_count) {
+//                     consume_food(player, slot, message_queue);
+//                 } else {
+//                     add_game_message(message_queue, "Invalid food slot number!", 7); // Red color
+//                 }
+//                 break;
+//             }
 
-            case 'c': {
-                // Combine broken key pieces into one working Ancient Key
-                if (player->broken_key_count >= 2) {
-                    player->broken_key_count -= 2;
-                    player->ancient_key_count++;
-                    add_game_message(message_queue, "You combined two broken key pieces into one Ancient Key!", 2); // Green color
-                } else {
-                    add_game_message(message_queue, "Not enough broken key pieces to combine!", 7); // Red color
-                }
-                break;
-            }
+//             case 'c': {
+//                 // Combine broken key pieces into one working Ancient Key
+//                 if (player->broken_key_count >= 2) {
+//                     player->broken_key_count -= 2;
+//                     player->ancient_key_count++;
+//                     add_game_message(message_queue, "You combined two broken key pieces into one Ancient Key!", 2); // Green color
+//                 } else {
+//                     add_game_message(message_queue, "Not enough broken key pieces to combine!", 7); // Red color
+//                 }
+//                 break;
+//             }
 
-            default:
-                // Invalid key
-                add_game_message(message_queue, "Invalid command in inventory!", 7); // Red color
-                break;
-        }
-    }
-}
+//             default:
+//                 // Invalid key
+//                 add_game_message(message_queue, "Invalid command in inventory!", 7); // Red color
+//                 break;
+//         }
+//     }
+// }
 
 
 void print_point(struct Point p, const char* type) {
@@ -757,84 +776,6 @@ void print_point(struct Point p, const char* type) {
     else symbol = ' ';
 
     mvaddch(p.y, p.x, symbol);
-}
-
-void sight_range(struct Map* game_map, struct Point* character_location) {
-    // Arrays to track visited and currently visible areas
-    static char visited[MAP_HEIGHT][MAP_WIDTH] = {0};
-    static char visible[MAP_HEIGHT][MAP_WIDTH] = {0};
-
-    // Reset visibility for the new frame
-    for (int y = 0; y < MAP_HEIGHT; y++) {
-        for (int x = 0; x < MAP_WIDTH; x++) {
-            visible[y][x] = 0;
-        }
-    }
-
-    // Mark the current position as visited
-    visited[character_location->y][character_location->x] = 1;
-
-    // Find if the player is in a room
-    struct Room* current_room = NULL;
-    for (int i = 0; i < game_map->room_count; i++) {
-        if (isPointInRoom(character_location, &game_map->rooms[i])) {
-            current_room = &game_map->rooms[i];
-            break;
-        }
-    }
-
-    if (current_room != NULL) {
-        // Player is in a room - reveal the entire current room
-        showRoom(game_map, current_room, visible);
-
-        // Reveal corridors and adjacent rooms that are connected to this room
-        for (int y = current_room->top_wall; y <= current_room->bottom_wall; y++) {
-            for (int x = current_room->left_wall; x <= current_room->right_wall; x++) {
-                if (game_map->grid[y][x] == CORRIDOR) {
-                    // Mark corridor as visible
-                    visible[y][x] = 1;
-
-                    // Check for adjacent rooms connected to this corridor
-                    for (int i = 0; i < game_map->room_count; i++) {
-                        struct Room* adjacent_room = &game_map->rooms[i];
-                        if (adjacent_room != current_room && isPointInRoom(&(struct Point){x, y}, adjacent_room)) {
-                            showRoom(game_map, adjacent_room, visible);
-                        }
-                    }
-                }
-            }
-        }
-    } else {
-        // Player is in a corridor or open area - show within sight range
-        for (int dy = -SIGHT_RANGE; dy <= SIGHT_RANGE; dy++) {
-            for (int dx = -SIGHT_RANGE; dx <= SIGHT_RANGE; dx++) {
-                int new_y = character_location->y + dy;
-                int new_x = character_location->x + dx;
-
-                // Check bounds
-                if (new_y >= 0 && new_y < MAP_HEIGHT && new_x >= 0 && new_x < MAP_WIDTH) {
-                    // Show if within range or previously visited
-                    if (visited[new_y][new_x] ||
-                        manhattanDistance(character_location->x, character_location->y, new_x, new_y) <= SIGHT_RANGE) {
-                        visible[new_y][new_x] = 1;
-                    }
-                }
-            }
-        }
-    }
-
-    // Display the map with visibility
-    for (int y = 0; y < MAP_HEIGHT; y++) {
-        for (int x = 0; x < MAP_WIDTH; x++) {
-            if (visible[y][x]) {
-                // Show actual map content
-                mvaddch(y, x, game_map->grid[y][x]);
-            } else {
-                // Show fog of war for unexplored areas
-                mvaddch(y, x, ' ');
-            }
-        }
-    }
 }
 
 void add_food(struct Map* map, Player* player) {
@@ -1084,23 +1025,6 @@ void open_food_inventory_menu(Player* player, struct MessageQueue* message_queue
     getch();  // pause to let user see any resulting messages
 }
 
-
-void showCorridorVisibility(struct Map* game_map, int x, int y) {
-    // Use SIGHT_RANGE directly from game.h
-    for (int dy = -SIGHT_RANGE; dy <= SIGHT_RANGE; dy++) {
-        for (int dx = -SIGHT_RANGE; dx <= SIGHT_RANGE; dx++) {
-            int new_y = y + dy;
-            int new_x = x + dx;
-            
-            if (new_y >= 0 && new_y < MAP_HEIGHT && new_x >= 0 && new_x < MAP_WIDTH) {
-                if (abs(dx) + abs(dy) <= SIGHT_RANGE) {
-                    game_map->visibility[new_y][new_x] = true;
-                }
-            }
-        }
-    }
-}
-
 void print_map(struct Map* game_map,
               bool visible[MAP_HEIGHT][MAP_WIDTH],
               struct Point character_location,
@@ -1281,13 +1205,29 @@ void print_map(struct Map* game_map,
                     break;
 
                 case WEAPON_MACE:
+                    attron(COLOR_PAIR(3));
+                    mvprintw(y, x, "\u2692"); // ⚒
+                    attroff(COLOR_PAIR(3));
+                    break;
                 case WEAPON_DAGGER:
+                    attron(COLOR_PAIR(3));
+                    mvprintw(y, x, "\U0001F5E1"); // 🗡
+                    attroff(COLOR_PAIR(3));
+                    break;
                 case WEAPON_MAGIC_WAND:
+                    attron(COLOR_PAIR(3));
+                    mvprintw(y, x, "\U0001FA84"); // 🪄
+                    attroff(COLOR_PAIR(3));
+                    break;
                 case WEAPON_ARROW:
+                    attron(COLOR_PAIR(3));
+                    mvprintw(y, x, "\u27B3");   // ➳
+                    attroff(COLOR_PAIR(3));
+                    break;
                 case WEAPON_SWORD:
                     // Color weapons in yellow
                     attron(COLOR_PAIR(3));
-                    mvaddch(y, x, tile);
+                    mvprintw(y, x, "\u2694");   // ⚔
                     attroff(COLOR_PAIR(3));
                     break;
 
@@ -1527,199 +1467,209 @@ void place_password_generator_in_corner(struct Map* map, struct Room* room) {
 }
 
 void move_character(Player* player, int key, struct Map* game_map, int* hitpoints, struct MessageQueue* message_queue){
-    struct Point new_location = player->location;
-    switch (key) {
-        case KEY_UP:    new_location.y--;      break;
+    int steps_to_move = (player->speed_spell_steps > 0) ? 2 : 1;
 
-        case KEY_DOWN:  new_location.y++;      break;
+    for (int step = 0; step < steps_to_move; step++) {
+        struct Point new_location = player->location;
+        switch (key) {
+            case KEY_UP:    new_location.y--;      break;
 
-        case KEY_LEFT:  new_location.x--;      break;
+            case KEY_DOWN:  new_location.y++;      break;
 
-        case KEY_RIGHT: new_location.x++;      break;
-        default: return;
-    }
+            case KEY_LEFT:  new_location.x--;      break;
 
-    // Bounds check
-    if (new_location.x < 0 || new_location.x >= MAP_WIDTH ||
-        new_location.y < 0 || new_location.y >= MAP_HEIGHT) {
-        return; // Out of map bounds, ignore
-    }
-
-    char target_tile = game_map->grid[new_location.y][new_location.x];
-
-    // -----------------------------------------------------------
-    // 1) If it's a locked password door and we have NO password,
-    //    disallow movement
-    // -----------------------------------------------------------
-    if (target_tile == PASSWORD_GEN) {
-        // Identify the room
-        Room* current_room = find_room_by_position(game_map, new_location.x, new_location.y);
-
-        if (current_room && current_room->has_password_door) {
-            // If code not yet generated, do it now!
-            if (current_room->door_code[0] == '\0') {
-                // Generate a 4-digit code
-                int code_num = rand() % 10000; // 0..9999
-                snprintf(current_room->door_code, sizeof(current_room->door_code), "%04d", code_num);
-            }
-
-            // Store the code in our global variable
-            strncpy(current_code, current_room->door_code, sizeof(current_code) - 1);
-            current_code[sizeof(current_code) - 1] = '\0';
-
-            // Mark it visible and reset the timer
-            code_visible = true;
-            code_start_time = time(NULL);
-
-            // Call our display function right away so it appears immediately
-            update_password_display();
+            case KEY_RIGHT: new_location.x++;      break;
+            default: return;
         }
-    }
 
+        // Bounds check
+        if (new_location.x < 0 || new_location.x >= MAP_WIDTH ||
+            new_location.y < 0 || new_location.y >= MAP_HEIGHT) {
+            break; // Out of map bounds, ignore
+        }
 
-    else if (target_tile == DOOR_PASSWORD) {
-        Room* door_room = find_room_by_position(game_map, new_location.x, new_location.y);
-        if (door_room->password_unlocked) {
-            // already unlocked => just move
-            player->location = new_location;
-        } else {
-            // if the user has at least 1 key, let them choose
-            bool has_key = (ancient_key_count > 0);
-            bool used_key = false;
+        char target_tile = game_map->grid[new_location.y][new_location.x];
 
-            if (has_key) {
-                // Ask user if they'd like to use the Ancient Key or enter password
-                clear();
-                mvprintw(2, 2, "Door is locked! You have an Ancient Key. Use it? (y/n)");
-                refresh();
-                int c = getch();
-                if (c == 'y' || c == 'Y') {
-                    used_key = true;
+        // -----------------------------------------------------------
+        // 1) If it's a locked password door and we have NO password,
+        //    disallow movement
+        // -----------------------------------------------------------
+        if (target_tile == PASSWORD_GEN) {
+            // Identify the room
+            Room* current_room = find_room_by_position(game_map, new_location.x, new_location.y);
+
+            if (current_room && current_room->has_password_door) {
+                // If code not yet generated, do it now!
+                if (current_room->door_code[0] == '\0') {
+                    // Generate a 4-digit code
+                    int code_num = rand() % 10000; // 0..9999
+                    snprintf(current_room->door_code, sizeof(current_room->door_code), "%04d", code_num);
                 }
-                // else they might attempt normal password input below
+
+                // Store the code in our global variable
+                strncpy(current_code, current_room->door_code, sizeof(current_code) - 1);
+                current_code[sizeof(current_code) - 1] = '\0';
+
+                // Mark it visible and reset the timer
+                code_visible = true;
+                code_start_time = time(NULL);
+
+                // Call our display function right away so it appears immediately
+                update_password_display();
             }
+        }
 
-            if (used_key) {
-                // 10% break chance
-                if ((rand() % 100) < 10) {
-                    // Key breaks => lose 1 key, gain 1 broken piece
-                    ancient_key_count--;
-                    broken_key_count++;
-                    mvprintw(4, 2, "The Ancient Key broke!");
-                } else {
-                    // Key successfully used => remove 1 key
-                    ancient_key_count--;
-                    door_room->password_unlocked = true; 
-                    mvprintw(4, 2, "Door unlocked with the Ancient Key!");
-                    // Player can pass through now
-                    player->location = new_location;
-                }
-                refresh();
-                getch();
-                return; 
+
+        else if (target_tile == DOOR_PASSWORD) {
+            Room* door_room = find_room_by_position(game_map, new_location.x, new_location.y);
+            if (door_room->password_unlocked) {
+                // already unlocked => just move
+                player->location = new_location;
             } else {
-                // Normal prompt for password (as before)...
-                bool success = prompt_for_password_door(door_room);
-                if (success) {
-                    door_room->password_unlocked = true;
-                    player->location = new_location;
+                // if the user has at least 1 key, let them choose
+                bool has_key = (ancient_key_count > 0);
+                bool used_key = false;
+
+                if (has_key) {
+                    // Ask user if they'd like to use the Ancient Key or enter password
+                    clear();
+                    mvprintw(2, 2, "Door is locked! You have an Ancient Key. Use it? (y/n)");
+                    refresh();
+                    int c = getch();
+                    if (c == 'y' || c == 'Y') {
+                        used_key = true;
+                    }
+                    // else they might attempt normal password input below
                 }
-                return;
+
+                if (used_key) {
+                    // 10% break chance
+                    if ((rand() % 100) < 10) {
+                        // Key breaks => lose 1 key, gain 1 broken piece
+                        ancient_key_count--;
+                        broken_key_count++;
+                        mvprintw(4, 2, "The Ancient Key broke!");
+                    } else {
+                        // Key successfully used => remove 1 key
+                        ancient_key_count--;
+                        door_room->password_unlocked = true; 
+                        mvprintw(4, 2, "Door unlocked with the Ancient Key!");
+                        // Player can pass through now
+                        player->location = new_location;
+                    }
+                    refresh();
+                    getch();
+                    return; 
+                } else {
+                    // Normal prompt for password (as before)...
+                    bool success = prompt_for_password_door(door_room);
+                    if (success) {
+                        door_room->password_unlocked = true;
+                        player->location = new_location;
+                    }
+                    return;
+                }
             }
         }
-    }
 
-    else if (target_tile == ANCIENT_KEY) {
-        // Pick up the Ancient Key
-        game_map->grid[new_location.y][new_location.x] = FLOOR; // Remove the key from the map
-        ancient_key_count++;
-        add_game_message(message_queue, "You picked up an Ancient Key!", 2); //at the time 2 is the color green
-        refresh();
-        getch();
-    }
+        else if (target_tile == ANCIENT_KEY) {
+            // Pick up the Ancient Key
+            game_map->grid[new_location.y][new_location.x] = FLOOR; // Remove the key from the map
+            ancient_key_count++;
+            add_game_message(message_queue, "You picked up an Ancient Key!", 2); //at the time 2 is the color green
+            refresh();
+            getch();
+        }
 
-    
-        // Handle secret doors
-    else if (target_tile == SECRET_DOOR_CLOSED) {
-        // Reveal the secret door
-        game_map->grid[new_location.y][new_location.x] = SECRET_DOOR_REVEALED;
-        add_game_message(message_queue, "You discovered a secret door!", 2); //at the time 2 is the color green
-        refresh();
-        getch();
-        // Move the player through the revealed secret door
+        
+            // Handle secret doors
+        else if (target_tile == SECRET_DOOR_CLOSED) {
+            // Reveal the secret door
+            game_map->grid[new_location.y][new_location.x] = SECRET_DOOR_REVEALED;
+            add_game_message(message_queue, "You discovered a secret door!", 2); //at the time 2 is the color green
+            refresh();
+            getch();
+            // Move the player through the revealed secret door
+            player->location = new_location;
+            return;
+        }
+        else if (target_tile == SECRET_DOOR_REVEALED) {
+            // Allow movement through the revealed secret door
+            player->location = new_location;
+            return;
+        }
+        // -----------------------------------------------------------
+        // 2) If it's one of these, it's impassable
+        // -----------------------------------------------------------
+        if (target_tile == WALL_HORIZONTAL ||
+            target_tile == WALL_VERTICAL   ||
+            target_tile == WINDOW          ||
+            target_tile == PILLAR          ||
+            target_tile == FOG) 
+        {
+            // Not passable
+            return;
+        }
+
+
+        // Otherwise, it's considered passable:
+        //   (Floor, Corridor, Food, Gold, 
+        //    OR password door with hasPassword==true)
         player->location = new_location;
-        return;
-    }
-    else if (target_tile == SECRET_DOOR_REVEALED) {
-        // Allow movement through the revealed secret door
-        player->location = new_location;
-        return;
-    }
 
-    else if (target_tile == ENEMY_FIRE_MONSTER) {
-        // Find the enemy at the target location
-        Enemy* enemy = NULL;
-        for (int i = 0; i < game_map->enemy_count; i++) {
-            if (game_map->enemies[i].position.x == new_location.x &&
-                game_map->enemies[i].position.y == new_location.y) {
-                enemy = &game_map->enemies[i];
+        
+        handle_weapon_pickup(player, game_map, new_location, message_queue);
+
+        handle_spell_pickup(player, game_map, new_location, message_queue);
+
+        
+        collect_food(player, game_map, message_queue);
+        handle_gold_collection(player, game_map, message_queue);
+
+
+        // -----------------------------------------------------------
+        // 3) Trap logic: If we just moved onto a trap location, trigger damage
+        // -----------------------------------------------------------
+        for (int i = 0; i < game_map->trap_count; i++) {
+            Trap* trap = &game_map->traps[i];
+            if (trap->location.x == new_location.x &&
+                trap->location.y == new_location.y)
+            {
+                if (!trap->triggered) {
+                    trap->triggered = true;
+                    game_map->grid[new_location.y][new_location.x] = TRAP_SYMBOL;
+                    *hitpoints -= 10;  // Reduce HP
+                    add_game_message(message_queue, "You triggered a trap! HP -10.", 7); //at the time 7 is the color red
+                    refresh();
+                }
                 break;
             }
         }
+    }
 
-        if (enemy) {
-            // Initiate combat
-            combat(player, enemy, game_map, hitpoints);
+
+    if (player->health_spell_steps > 0) {
+        player->health_spell_steps--;
+        if (player->health_spell_steps == 0) {
+            add_game_message(message_queue,
+                "Your health regeneration is back to normal!",
+                14); // e.g. yellow color
         }
-        return; // Player doesn't move into the enemy's tile during combat
     }
-
-
-    // -----------------------------------------------------------
-    // 2) If it's one of these, it's impassable
-    // -----------------------------------------------------------
-    if (target_tile == WALL_HORIZONTAL ||
-        target_tile == WALL_VERTICAL   ||
-        target_tile == WINDOW          ||
-        target_tile == PILLAR          ||
-        target_tile == FOG) 
-    {
-        // Not passable
-        return;
+    if (player->damage_spell_steps > 0) {
+        player->damage_spell_steps--;
+        if (player->damage_spell_steps == 0) {
+            add_game_message(message_queue,
+                "Your damage is back to normal!",
+                14);
+        }
     }
-
-
-    // Otherwise, it's considered passable:
-    //   (Floor, Corridor, Food, Gold, 
-    //    OR password door with hasPassword==true)
-    player->location = new_location;
-
-    
-    handle_weapon_pickup(player, game_map, new_location, message_queue);
-
-    handle_spell_pickup(player, game_map, new_location, message_queue);
-
-    
-    collect_food(player, game_map, message_queue);
-    handle_gold_collection(player, game_map, message_queue);
-
-
-    // -----------------------------------------------------------
-    // 3) Trap logic: If we just moved onto a trap location, trigger damage
-    // -----------------------------------------------------------
-    for (int i = 0; i < game_map->trap_count; i++) {
-        Trap* trap = &game_map->traps[i];
-        if (trap->location.x == new_location.x &&
-            trap->location.y == new_location.y)
-        {
-            if (!trap->triggered) {
-                trap->triggered = true;
-                game_map->grid[new_location.y][new_location.x] = TRAP_SYMBOL;
-                *hitpoints -= 10;  // Reduce HP
-                add_game_message(message_queue, "You triggered a trap! HP -10.", 7); //at the time 7 is the color red
-                refresh();
-            }
-            break;
+    if (player->speed_spell_steps > 0) {
+        player->speed_spell_steps--;
+        if (player->speed_spell_steps == 0) {
+            add_game_message(message_queue,
+                "Your speed is back to normal!",
+                14);
         }
     }
 }
@@ -1879,14 +1829,6 @@ void init_map(struct Map* map) {
     map->last_attack_time = time(NULL);
 }
 
-
-bool rooms_overlap(const struct Room* r1, const struct Room* r2) {
-    return !(r1->right_wall + MIN_ROOM_DISTANCE < r2->left_wall ||
-             r2->right_wall + MIN_ROOM_DISTANCE < r1->left_wall ||
-             r1->top_wall + MIN_ROOM_DISTANCE < r2->bottom_wall ||
-             r2->top_wall + MIN_ROOM_DISTANCE < r1->bottom_wall);
-}
-
 void add_gold(struct Map* map, Player* player) {
     if (player->gold_count >= MAX_GOLDS) return; // Prevent overflow
 
@@ -1976,7 +1918,6 @@ void handle_gold_collection(Player* player, struct Map* map, struct MessageQueue
     }
 }
 
-
 // Function to update hunger rate and health regeneration
 void update_hunger_and_health(Player* player, struct Map* map, struct MessageQueue* message_queue) {
     time_t current_time = time(NULL);
@@ -1993,14 +1934,23 @@ void update_hunger_and_health(Player* player, struct Map* map, struct MessageQue
         }
     }
 
-    // Handle health regeneration if hunger rate is 0 and some time has passed since last attack
     if (player->hunger_rate == 0) {
-        if (difftime(current_time, map->last_attack_time) >= 60.0) { // e.g., 60 seconds since last attack
-            player->hitpoints += 1; // Slowly increase hitpoints
+        // If enough time has passed
+        if ( difftime(current_time, map->last_attack_time) >= 60.0 ) {
+            // Base = +1 HP
+            int regen_amount = 1;
+            // Double if health_spell_steps > 0
+            if (player->health_spell_steps > 0) {
+                regen_amount *= 2; // => 2 HP
+            }
+            player->hitpoints += regen_amount;
             if (player->hitpoints > 100) player->hitpoints = 100;
-            char message[100];
-            snprintf(message, sizeof(message), "Health regenerates by 1 HP.");
-            add_game_message(message_queue, message, 2); // Green color
+
+            add_game_message(message_queue,
+                (regen_amount == 2)
+                ? "Regenerated 2 HP (Health Spell active)!"
+                : "Regenerated 1 HP.",
+                2);
         }
     }
 
@@ -2024,47 +1974,6 @@ void update_hunger_and_health(Player* player, struct Map* map, struct MessageQue
 bool isPointInRoom(struct Point* point, struct Room* room) {
     return (point->x >= room->left_wall && point->x <= room->right_wall &&
             point->y >= room->top_wall && point->y <= room->bottom_wall);
-}
-
-void showRoom(struct Map* game_map, struct Room* room, char visible[MAP_HEIGHT][MAP_WIDTH]) {
-    for (int y = room->bottom_wall; y <= room->top_wall; y++) {
-        for (int x = room->left_wall; x <= room->right_wall; x++) {
-            if (y >= 0 && y < MAP_HEIGHT && x >= 0 && x < MAP_WIDTH) {
-                visible[y][x] = 1;
-            }
-        }
-    }
-}
-
-bool canSeeRoomThroughWindow(struct Map* game_map, struct Room* room1, struct Room* room2) {
-    bool share_horizontal = (room1->top_wall == room2->bottom_wall - 1) ||
-                          (room1->bottom_wall == room2->top_wall + 1);
-
-    bool share_vertical = (room1->right_wall == room2->left_wall - 1) ||
-                         (room1->left_wall == room2->right_wall + 1);
-    
-    // Check for windows on shared walls
-    if (share_horizontal) {
-        for (int x = MAX(room1->left_wall, room2->left_wall); 
-             x <= MIN(room1->right_wall, room2->right_wall); x++) {
-            if (game_map->grid[room1->top_wall][x] == WINDOW ||
-                game_map->grid[room1->bottom_wall][x] == WINDOW) {
-                return true;
-            }
-        }
-    }
-    
-    if (share_vertical) {
-        for (int y = MAX(room1->bottom_wall, room2->bottom_wall);
-             y <= MIN(room1->top_wall, room2->top_wall); y++) {
-            if (game_map->grid[y][room1->right_wall] == WINDOW ||
-                game_map->grid[y][room1->left_wall] == WINDOW) {
-                return true;
-            }
-        }
-    }
-    
-    return false;
 }
 
 int manhattanDistance(int x1, int y1, int x2, int y2) {
@@ -2250,84 +2159,6 @@ void place_pillars(struct Map* map, struct Room* room) {
     }
 }
 
-bool can_see_room(struct Map* map, struct Room* room1, struct Room* room2) {
-    // Check if rooms are connected through a window
-    if (canSeeRoomThroughWindow(map, room1, room2)) {
-        return true;
-    }
-
-    // Check if rooms are close enough and have line of sight
-    int room1_center_x = (room1->left_wall + room1->right_wall) / 2;
-    int room1_center_y = (room1->top_wall + room1->bottom_wall) / 2;
-    int room2_center_x = (room2->left_wall + room2->right_wall) / 2;
-    int room2_center_y = (room2->top_wall + room2->bottom_wall) / 2;
-
-    // Check if rooms are within sight range
-    if (abs(room1_center_x - room2_center_x) + abs(room1_center_y - room2_center_y) > SIGHT_RANGE * 2) {
-        return false;
-    }
-
-    // Simple line of sight check
-    int dx = room2_center_x - room1_center_x;
-    int dy = room2_center_y - room1_center_y;
-    int steps = MAX(abs(dx), abs(dy));
-
-    if (steps == 0) return true;
-
-    float x_inc = (float)dx / steps;
-    float y_inc = (float)dy / steps;
-
-    float x = room1_center_x;
-    float y = room1_center_y;
-
-    for (int i = 0; i < steps; i++) {
-        x += x_inc;
-        y += y_inc;
-
-        int check_x = (int)x;
-        int check_y = (int)y;
-
-        // Check if line of sight is blocked by any wall or obstruction
-        if (map->grid[check_y][check_x] == WALL_VERTICAL || 
-            map->grid[check_y][check_x] == WALL_HORIZONTAL) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-bool validate_stair_placement(struct Map* map) {
-    int stair_count = 0;
-    for (int y = 0; y < MAP_HEIGHT; y++) {
-        for (int x = 0; x < MAP_WIDTH; x++) {
-            if (map->grid[y][x] == STAIRS) stair_count++;
-        }
-    }
-    return stair_count == 1;
-}
-
-/**
- * Creates a safe filename for save games.
- * Maximum combined length of username and savename must be less than
- * MAX_FILENAME_LEN - 12 characters (accounting for "saves/", "_", and ".sav")
- * 
- * @return false if the resulting filename would be too long
- */
-
-bool create_safe_filename(char* dest, size_t dest_size, const char* username, const char* savename) {
-    // Calculate required space
-    size_t required = strlen("saves/") + strlen(username) + 1 + strlen(savename) + 
-                     strlen(".sav") + 1;
-    
-    if (required > dest_size) {
-        return false;
-    }
-    
-    snprintf(dest, dest_size, "saves/%s_%s.sav", username, savename);
-    return true;
-}
-
 void save_current_game(struct UserManager* manager, struct Map* game_map, 
                        Player* player, int current_level) {
     if (!manager->current_user) {
@@ -2337,10 +2168,10 @@ void save_current_game(struct UserManager* manager, struct Map* game_map,
         return;
     }
 
-    // Update user data
-    manager->current_user->score = player->score;
-    manager->current_user->gold = player->gold_count;
-    save_users_to_json(manager);
+        // Update scoreboard info
+    manager->current_user->score += player->score;
+    manager->current_user->gold  += player->gold_count;
+    save_users_to_json(manager);  // So scoreboard is updated
 
     char filename[256]; // Ensure buffer is large enough
     char save_name[100];
@@ -2406,49 +2237,37 @@ void save_current_game(struct UserManager* manager, struct Map* game_map,
 bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game) {
     if (!manager->current_user) {
         mvprintw(0, 0, "Cannot load game as guest user.");
-        refresh();
         getch();
         return false;
     }
 
     clear();
     mvprintw(0, 0, "Enter save name to load: ");
-    list_saved_games(manager);
-    printw("\n");
+    list_saved_games(manager); // prints saves
+    mvprintw(2, 0, "> ");
     refresh();
 
     char save_name[100];
     echo();
-    getnstr(save_name, sizeof(save_name) - 1); // Limit input to fit within buffer
+    getnstr(save_name, sizeof(save_name)-1);
     noecho();
 
-    char safe_username[94];
-    char safe_save_name[94];
-    strncpy(safe_username, manager->current_user->username, 93);
-    safe_username[93] = '\0';
-    strncpy(safe_save_name, save_name, 93);
-    safe_save_name[93] = '\0';
-
     char filename[256];
-    int written = snprintf(filename, sizeof(filename), "saves/%s_%s.sav", safe_username, safe_save_name);
-    if (written < 0 || written >= sizeof(filename)) {
-        mvprintw(2, 0, "Error: Filename too long.");
-        refresh();
-        getch();
-        return false;
-    }
+    snprintf(filename, sizeof(filename),
+             "saves/%s_%s.sav",
+             manager->current_user->username, save_name);
 
     FILE* file = fopen(filename, "rb");
     if (!file) {
-        mvprintw(2, 0, "Error: Could not find save file.");
-        refresh();
+        mvprintw(4, 0, "Error: Could not find save file.");
         getch();
         return false;
     }
 
-    fread(saved_game, sizeof(struct SavedGame), 1, file);
+    fread(saved_game, sizeof(*saved_game), 1, file);
     fclose(file);
-    return true;
+
+    return true; // success
 }
 
 void list_saved_games(struct UserManager* manager) {
@@ -2501,50 +2320,59 @@ void place_windows(struct Map* map, struct Room* room) {
 }
 
 // Function to create a weapon based on its symbol
+// -------------- Create weapon with new Unicode symbols -------------
 Weapon create_weapon(char symbol) {
     Weapon weapon;
     weapon.symbol = symbol;
 
-    switch(symbol) {
-        case WEAPON_MACE:
-            strcpy(weapon.name, "Mace");
+    switch (symbol) {
+        case WEAPON_MACE: // '1'
+            // Use the Unicode symbol ⚒
+            strcpy(weapon.name, u8"⚒ Mace");
             weapon.damage = 5;
             weapon.type = MELEE;
             weapon.quantity = 1;
             break;
-        case WEAPON_DAGGER:
-            strcpy(weapon.name, "Dagger");
+
+        case WEAPON_DAGGER: // '2'
+            strcpy(weapon.name, u8"🗡 Dagger");
             weapon.damage = 12;
             weapon.type = RANGED;
             weapon.quantity = 10;
             break;
-        case WEAPON_MAGIC_WAND:
-            strcpy(weapon.name, "Magic Wand");
+
+        case WEAPON_MAGIC_WAND: // '3'
+            strcpy(weapon.name, u8"🪄 Magic Wand");
             weapon.damage = 15;
             weapon.type = RANGED;
             weapon.quantity = 8;
             break;
-        case WEAPON_ARROW:
-            strcpy(weapon.name, "Arrow");
+
+        case WEAPON_ARROW: // '4'
+            strcpy(weapon.name, u8"➳ Arrow");
             weapon.damage = 5;
             weapon.type = RANGED;
             weapon.quantity = 20;
             break;
-        case WEAPON_SWORD:
-            strcpy(weapon.name, "Sword");
+
+        case WEAPON_SWORD: // '5'
+            strcpy(weapon.name, u8"⚔ Sword");
             weapon.damage = 10;
             weapon.type = MELEE;
             weapon.quantity = 1;
             break;
+
         default:
             strcpy(weapon.name, "Unknown");
             weapon.damage = 0;
             weapon.type = MELEE;
             weapon.quantity = 1;
+            break;
     }
 
     return weapon;
 }
+
 
 void add_weapons(struct Map* map, Player* player) {
     const int WEAPON_COUNT = 10; // Adjust as needed
@@ -2589,205 +2417,118 @@ void add_weapons(struct Map* map, Player* player) {
     }
 }
 
-const char* symbol_to_name(char symbol) {
-    switch(symbol) {
-        case WEAPON_MACE:
-            return "Mace";
-        case WEAPON_DAGGER:
-            return "Dagger";
-        case WEAPON_MAGIC_WAND:
-            return "Magic Wand";
-        case WEAPON_ARROW:
-            return "Arrow";
-        case WEAPON_SWORD:
-            return "Sword";
-        default:
-            return "Unknown Weapon";
-    }
-}
-
-void equip_weapon(Player* player, int weapon_index) {
-    if (weapon_index < 0 || weapon_index >= player->weapon_count) {
-        mvprintw(14, 80, "Invalid weapon index!");
-        refresh();
-        getch();
-        return;
-    }
-
-    player->equipped_weapon = weapon_index;
-
-    char message[100];
-    snprintf(message, sizeof(message), "You have equipped the %s.", player->weapons[weapon_index].name);
-    mvprintw(14, 80, "%s", message);
-    refresh();
-    getch();
-}
-
-void open_weapon_inventory_menu(Player* player, struct Map* map, struct MessageQueue* message_queue) {
+void open_weapon_inventory_menu(Player* player,
+                                struct Map* map,
+                                struct MessageQueue* msg_queue){
     bool menu_open = true;
 
     while (menu_open) {
         clear();
         mvprintw(0, 0, "Weapon Inventory:");
 
-        // Display Melee Weapons
-        mvprintw(2, 0, "Melee Weapons:");
-        char* melee_weapons[] = {"Mace", "Sword"};
-        char melee_symbols[] = {WEAPON_MACE, WEAPON_SWORD};
-        int melee_damages[] = {15, 18};
-        for (int i = 0; i < 2; i++) {
-            bool owned = false;
-            bool equipped = false;
-            for (int j = 0; j < player->weapon_count; j++) {
-                if (player->weapons[j].symbol == melee_symbols[i]) {
-                    owned = true;
-                    if (player->equipped_weapon == j) equipped = true;
-                    break;
-                }
+        // Show all weapons by index
+        for (int i = 0; i < player->weapon_count; i++) {
+            Weapon* w = &player->weapons[i];
+            bool is_equipped = (player->equipped_weapon == i);
+            
+            // If you have a damage spell, multiply displayed damage
+            int effective_damage = w->damage + player->temporary_damage;
+            if (player->damage_spell_steps > 0) {
+                effective_damage *= 2;
             }
-            mvprintw(3 + i, 2, "%s: %s%s (Damage: %d)", 
-                     melee_weapons[i],
-                     owned ? "Owned" : "Not Owned",
-                     equipped ? " (Equipped)" : "",
-                     melee_damages[i]);
+
+            mvprintw(i + 2, 0,
+               "[%d] %s - Damage: %d, Quantity: %d%s",
+               i + 1,
+               w->name,
+               effective_damage,
+               w->quantity,
+               is_equipped ? " (Equipped)" : "");
         }
 
-        // Display Ranged Weapons
-        mvprintw(6, 0, "Ranged Weapons:");
-        char* ranged_weapons[] = {"Dagger", "Magic Wand", "Arrow"};
-        char ranged_symbols[] = {WEAPON_DAGGER, WEAPON_MAGIC_WAND, WEAPON_ARROW};
-        int ranged_damages[] = {10, 20, 8};
-        for (int i = 0; i < 3; i++) {
-            int count = 0;
-            for (int j = 0; j < player->weapon_count; j++) {
-                if (player->weapons[j].symbol == ranged_symbols[i]) {
-                    count = player->weapons[j].quantity;
-                    break;
-                }
-            }
-            mvprintw(7 + i, 2, "%s: Count: %d (Damage: %d)", ranged_weapons[i], count, ranged_damages[i]);
-        }
+        mvprintw(player->weapon_count + 4, 0, 
+            "Commands:\n"
+            "  e <index> - Equip weapon\n"
+            "  d <index> - Drop weapon\n"
+            "  q         - Quit\n"
+            "Your choice: ");
 
-        // Display menu options
-        mvprintw(10, 0, "Options:");
-        mvprintw(11, 2, "e <weapon_name> - Equip weapon");
-        mvprintw(12, 2, "u             - Use equipped weapon");
-        mvprintw(13, 2, "d <weapon_name> - Drop weapon");
-        mvprintw(14, 2, "q             - Quit weapon inventory");
         refresh();
 
-        // Handle input
-        char input[100];
+        char input[32];
         echo();
-        getnstr(input, sizeof(input) - 1);
+        getnstr(input, sizeof(input)-1);
         noecho();
+        if (!strlen(input)) continue;
 
-        if (strlen(input) == 0) {
-            continue;
-        }
-
-        char command = tolower(input[0]);
-
-        if (command == 'q') {
-            menu_open = false;
-            continue;
-        }
-
-        switch (command) {
-            case 'e': {
-                // Equip weapon by name
-                char weapon_name[50];
-                sscanf(&input[1], "%s", weapon_name);
-
-                bool found = false;
-                for (int i = 0; i < player->weapon_count; i++) {
-                    if (strcasecmp(player->weapons[i].name, weapon_name) == 0) {
-                        player->equipped_weapon = i;
-                        char msg[100];
-                        snprintf(msg, sizeof(msg), "Equipped %s.", player->weapons[i].name);
-                        add_game_message(message_queue, msg, 2); // Green color
-                        found = true;
-                        break;
-                    }
-                }
-
-                if (!found) {
-                    add_game_message(message_queue, "Weapon not found in inventory!", 7); // Red color
-                }
-                break;
+        char cmd;
+        int index;
+        if (sscanf(input, "%c %d", &cmd, &index) == 2) {
+            int widx = index - 1;  // zero-based
+            if (widx < 0 || widx >= player->weapon_count) {
+                add_game_message(msg_queue, "Invalid weapon index!", 7);
+                continue;
             }
 
-            case 'u': {
-                // Use equipped weapon
-                use_weapon(player, map, message_queue);
-                break;
-            }
+            if (tolower(cmd) == 'e') {
+                // Equip
+                player->equipped_weapon = widx;
+                char buf[64];
+                snprintf(buf, sizeof(buf),
+                         "Equipped %s.", player->weapons[widx].name);
+                add_game_message(msg_queue, buf, 2);
 
-            case 'd': {
-                // Drop weapon by name
-                char weapon_name[50];
-                sscanf(&input[1], "%s", weapon_name);
-
-                bool found = false;
-                for (int i = 0; i < player->weapon_count; i++) {
-                    if (strcasecmp(player->weapons[i].name, weapon_name) == 0) {
-                        struct Point drop_location = player->location;
-                        char current_tile = map->grid[drop_location.y][drop_location.x];
-
-                        if (current_tile == FLOOR) {
-                            if (player->weapons[i].type == RANGED) {
-                                if (player->weapons[i].quantity > 0) {
-                                    player->weapons[i].quantity--;
-                                    if (player->weapons[i].quantity == 0) {
-                                        for (int j = i; j < player->weapon_count - 1; j++) {
-                                            player->weapons[j] = player->weapons[j + 1];
-                                        }
-                                        player->weapon_count--;
-                                        if (player->equipped_weapon == i) {
-                                            player->equipped_weapon = -1;
-                                        }
-                                    }
-                                    map->grid[drop_location.y][drop_location.x] = player->weapons[i].symbol;
-                                    char msg[100];
-                                    snprintf(msg, sizeof(msg), "Dropped one %s.", player->weapons[i].name);
-                                    add_game_message(message_queue, msg, 2); // Green color
-                                }
-                            } else {
-                                map->grid[drop_location.y][drop_location.x] = FLOOR;
-                                char msg[100];
-                                snprintf(msg, sizeof(msg), "Dropped %s.", player->weapons[i].name);
-                                add_game_message(message_queue, msg, 2); // Green color
-                                for (int j = i; j < player->weapon_count - 1; j++) {
-                                    player->weapons[j] = player->weapons[j + 1];
-                                }
-                                player->weapon_count--;
-                                if (player->equipped_weapon == i) {
-                                    player->equipped_weapon = -1;
-                                }
+            } else if (tolower(cmd) == 'd') {
+                // Drop logic: 
+                // 1) Check if tile is floor
+                // 2) If RANGED => drop 1 ammo or entire stack
+                // 3) If MELEE => remove from inventory, place tile if you want
+                struct Point drop_loc = player->location;
+                if (map->grid[drop_loc.y][drop_loc.x] != FLOOR) {
+                    add_game_message(msg_queue, "Cannot drop here!", 7);
+                    continue;
+                }
+                Weapon* w = &player->weapons[widx];
+                if (w->type == RANGED) {
+                    if (w->quantity > 0) {
+                        w->quantity--; // dropping 1
+                        map->grid[drop_loc.y][drop_loc.x] = w->symbol; // place it
+                        add_game_message(msg_queue,
+                            "Dropped 1 ammo of your ranged weapon.",
+                            2);
+                        // If quantity is 0 => remove from inventory
+                        if (w->quantity == 0) {
+                            if (player->equipped_weapon == widx) {
+                                player->equipped_weapon = -1;
                             }
-
-                            found = true;
-                            break;
-                        } else {
-                            add_game_message(message_queue, "Cannot drop weapon here. Tile is not empty.", 7); // Red color
-                            found = true;
-                            break;
+                            // shift everything
+                            for (int j = widx; j < player->weapon_count - 1; j++) {
+                                player->weapons[j] = player->weapons[j + 1];
+                            }
+                            player->weapon_count--;
                         }
                     }
+                } else {
+                    // MELEE => remove from inventory completely
+                    map->grid[drop_loc.y][drop_loc.x] = FLOOR; // or place the symbol if you want
+                    if (player->equipped_weapon == widx) {
+                        player->equipped_weapon = -1;
+                    }
+                    for (int j = widx; j < player->weapon_count - 1; j++) {
+                        player->weapons[j] = player->weapons[j + 1];
+                    }
+                    player->weapon_count--;
+                    add_game_message(msg_queue, "Dropped melee weapon.", 2);
                 }
 
-                if (!found) {
-                    add_game_message(message_queue, "Weapon not found in inventory!", 7); // Red color
-                }
-                break;
             }
-
-            default:
-                add_game_message(message_queue, "Invalid command in weapon inventory!", 7); // Red color
-                break;
+        } else if (tolower(input[0]) == 'q') {
+            menu_open = false;
+        } else {
+            add_game_message(msg_queue, "Invalid command!", 7);
         }
     }
-} 
+}
 
 // Update weapon pickup logic to increment counts appropriately
 void handle_weapon_pickup(Player* player, struct Map* map, struct Point new_location, struct MessageQueue* message_queue) {
@@ -2838,6 +2579,22 @@ void handle_weapon_pickup(Player* player, struct Map* map, struct Point new_loca
                 default:
                     break;
             }
+        }
+
+        if (tile == 'x') {
+            // This is dropped ammo
+            // create a new weapon with quantity=1
+            Weapon dropped;
+            dropped.symbol = WEAPON_ARROW; // or dagger, depends on how you know which weapon was dropped
+            // or parse from the original weapon name if needed
+            // for simplicity let's assume you only do this for arrow, or you store the original symbol
+            strcpy(dropped.name, "➳ Arrow (dropped)");
+            dropped.damage = 5;
+            dropped.type = RANGED;
+            dropped.quantity = 1;
+
+            // Now add it to the player's inventory
+            // ...
         }
 
         map->grid[new_location.y][new_location.x] = FLOOR;
@@ -2963,7 +2720,7 @@ const char* spell_type_to_name(SpellType type) {
     }
 }
 
-void open_spell_inventory_menu(struct Map* game_map, Player* player) {
+void open_spell_inventory_menu(struct Map* game_map, Player* player, struct MessageQueue* message_queue) {
     bool menu_open = true;
 
     while (menu_open) {
@@ -3021,7 +2778,7 @@ void open_spell_inventory_menu(struct Map* game_map, Player* player) {
 
             int spell_num = atoi(&input[1]) - 1; // Convert to 0-based index
             if (spell_num >= 0 && spell_num < player->spell_count) {
-                use_spell(player, NULL); // Pass game_map if spell effects depend on it
+                use_spell(player, NULL, message_queue); // Pass game_map if spell effects depend on it
             } else {
                 mvprintw(12, 0, "Invalid spell number!");
                 refresh();
@@ -3078,74 +2835,87 @@ void open_spell_inventory_menu(struct Map* game_map, Player* player) {
     }
 }
 
-void use_spell(Player* player, struct Map* game_map) {
+void use_spell(Player* player, struct Map* game_map, struct MessageQueue* message_queue) {
+    // If no spells in inventory
     if (player->spell_count == 0) {
-        mvprintw(14, 80, "No spells to use!");
-        refresh();
-        getch();
+        add_game_message(message_queue, "No spells to use!", 7);
         return;
     }
 
-    // Prompt user to select a spell
-    mvprintw(14, 80, "Enter spell number to use: ");
+    // Clear the screen or show them a small prompt
+    clear();
+    mvprintw(0, 0, "Your Spells:\n");
+    for (int i = 0; i < player->spell_count; i++) {
+        mvprintw(i + 1, 2, "%d) %s (Effect: %d)",
+                 i + 1,
+                 player->spells[i].name,
+                 player->spells[i].effect_value);
+    }
+    mvprintw(player->spell_count + 2, 0,
+             "Enter the number of the spell to use (or 0 to cancel): ");
     refresh();
 
-    char input[10];
+    // Get user input
     echo();
+    char input[10];
     getnstr(input, sizeof(input) - 1);
     noecho();
 
-    if (strlen(input) == 0) {
+    int choice = atoi(input);
+    if (choice <= 0 || choice > player->spell_count) {
+        // either canceled (0) or invalid index
         return;
     }
 
-    int spell_num = atoi(input) - 1; // Convert to 0-based index
+    // Convert to zero-based
+    int index = choice - 1;
+    Spell* chosen_spell = &player->spells[index];
 
-    if (spell_num < 0 || spell_num >= player->spell_count) {
-        mvprintw(16, 80, "Invalid spell number!");
-        refresh();
-        getch();
-        return;
-    }
-
-    Spell* spell = &player->spells[spell_num];
-
-    switch(spell->type) {
-        case SPELL_HEALTH_TYPE:
-            player->hitpoints += spell->effect_value;
-            if (player->hitpoints > 100) player->hitpoints = 100; // Assuming 100 is max
-            mvprintw(16, 80, "Used Health Spell! Hitpoints increased by %d.", spell->effect_value);
+    // Apply effect:
+    switch (chosen_spell->type) {
+        case SPELL_HEALTH_TYPE: {
+            // Double regen: set `player->health_spell_steps = 10;`
+            player->health_spell_steps = 10;
+            add_game_message(message_queue,
+                "You used a Health Spell! Health regeneration is doubled for the next 10 moves.",
+                2);
             break;
+        }
 
-        case SPELL_SPEED_TYPE:
-            // Implement speed effect (e.g., increase movement speed for a duration)
-            // This requires additional game logic to handle temporary effects
-            mvprintw(16, 80, "Used Speed Spell! (Effect not implemented yet.)");
+        case SPELL_DAMAGE_TYPE: {
+            // Double weapon damage: set `player->damage_spell_steps = 10;`
+            player->damage_spell_steps = 10;
+            add_game_message(message_queue,
+                "You used a Damage Spell! Weapon damage is doubled for the next 10 moves.",
+                2);
             break;
+        }
 
-        case SPELL_DAMAGE_TYPE:
-            // Implement damage effect (e.g., attack all enemies in range)
-            // Requires enemy management
-            mvprintw(16, 80, "Used Damage Spell! (Effect not implemented yet.)");
+        case SPELL_SPEED_TYPE: {
+            // Speed up movement: `player->speed_spell_steps = 10;`
+            player->speed_spell_steps = 10;
+            add_game_message(message_queue,
+                "You used a Speed Spell! You will move 2 tiles per step for the next 10 moves.",
+                2);
             break;
+        }
 
         default:
-            mvprintw(16, 80, "Unknown spell type!");
-            break;
+            add_game_message(message_queue,
+                "Unknown spell type. Nothing happens.", 7);
+            return;
     }
 
-    refresh();
-    getch();
-
-    // Optionally, remove the spell after use if spells are single-use
-    // Uncomment the following lines if spells are consumable
-    /*
-    for (int i = spell_num; i < player->spell_count - 1; i++) {
+    // If spells are single-use, remove from inventory
+    for (int i = index; i < player->spell_count - 1; i++) {
         player->spells[i] = player->spells[i + 1];
     }
     player->spell_count--;
-    */
+
+    // Wait a moment or keypress, if you like:
+    getch();
 }
+
 
 void add_enemies(struct Map* map, int current_level) {
     int enemies_to_add = current_level * 2;
@@ -3164,28 +2934,14 @@ void add_enemies(struct Map* map, int current_level) {
             Enemy enemy;
             int enemy_type_rand = rand() % 5;
 
-            switch(enemy_type_rand) {
-                case 0:
-                    enemy.type = 'D';
-                    enemy.hp = 5;
-                    break;
-                case 1:
-                    enemy.type = 'F';
-                    enemy.hp = 10;
-                    break;
-                case 2:
-                    enemy.type = 'G';
-                    enemy.hp = 15;
-                    break;
-                case 3:
-                    enemy.type = 'S';
-                    enemy.hp = 20;
-                    break;
-                case 4:
-                    enemy.type = 'U';
-                    enemy.hp = 30;
-                    break;
+            switch (enemy_type_rand) {
+                case 0: enemy.type = ENEMY_DEMON; break;
+                case 1: enemy.type = ENEMY_FIRE_BREATHING_MONSTER; break;
+                case 2: enemy.type = ENEMY_GIANT; break;
+                case 3: enemy.type = ENEMY_SNAKE; break;
+                case 4: enemy.type = ENEMY_UNDEAD; break;
             }
+
 
             enemy.position.x = x;
             enemy.position.y = y;
@@ -3246,7 +3002,7 @@ bool is_enemy_in_same_room(Player* player, Enemy* enemy, struct Map* map) {
 void update_enemies(struct Map* map, Player* player, struct MessageQueue* message_queue) {
     for (int i = 0; i < map->enemy_count; i++) {
         Enemy* enemy = &map->enemies[i];
-        if (!enemy->active && is_adjacent(player->location, enemy->position)) {
+        if ( is_adjacent(player->location, enemy->position)) {
             enemy->active = true;
             enemy->chasing = true;
             char msg[100];
@@ -3300,98 +3056,6 @@ void move_enemy_towards_player(Enemy* enemy, Player* player, struct Map* map) {
     }
 }
 
-void combat(Player* player, Enemy* enemy, struct Map* map, int* hitpoints) {
-    bool in_combat = true;
-    while (in_combat) { 
-        clear();
-        mvprintw(0, 0, "Combat with Fire Breathing Monster!");
-        mvprintw(2, 0, "Your HP: %d", player->hitpoints);
-        mvprintw(3, 0, "Enemy HP: %d", enemy->hp);
-        mvprintw(5, 0, "Choose action: (A)ttack or (R)un");
-        refresh();
-
-        int choice = getch();
-        switch (tolower(choice)) {
-            case 'a':
-                {
-                    // Player attacks enemy
-                    int damage = 0;
-                    if (player->equipped_weapon != -1) {
-                        damage = player->weapons[player->equipped_weapon].damage;
-                    } else {
-                        damage = 5; // Unarmed damage
-                    }
-
-                    enemy->hp -= damage;
-                    if (enemy->hp <= 0) {
-                        // Enemy defeated
-                        add_game_message(map->enemy_count > 0 ? &((struct MessageQueue){0}) : NULL, "You defeated the Fire Breathing Monster!", 2);
-                        // Remove enemy from the map
-                        map->grid[enemy->position.y][enemy->position.x] = FLOOR;
-                        // Shift enemies in the array
-                        for (int i = 0; i < map->enemy_count; i++) {
-                            if (&map->enemies[i] == enemy) {
-                                for (int j = i; j < map->enemy_count - 1; j++) {
-                                    map->enemies[j] = map->enemies[j + 1];
-                                }
-                                map->enemy_count--;
-                                break;
-                            }
-                        }
-                        in_combat = false;
-                        break;
-                    }
-
-                    // Enemy attacks player
-                    player->hitpoints -= 5; // Enemy damage
-                    if (player->hitpoints <= 0) {
-                        add_game_message(map->enemy_count > 0 ? &((struct MessageQueue){0}) : NULL, "The enemy has defeated you!", 7);
-                        in_combat = false;
-                        break;
-                    }
-
-                    // Continue combat
-                    add_game_message(map->enemy_count > 0 ? &((struct MessageQueue){0}) : NULL, "You attacked the enemy.", 3);
-                    add_game_message(map->enemy_count > 0 ? &((struct MessageQueue){0}) : NULL, "The enemy attacked you.", 4);
-                }
-                break;
-
-            case 'r':
-                {
-                    // Attempt to run
-                    // Simple logic: 50% chance to escape
-                    if (rand() % 100 < 50) {
-                        add_game_message(map->enemy_count > 0 ? &((struct MessageQueue){0}) : NULL, "You successfully escaped!", 3);
-                        in_combat = false;
-                        // Move player back to previous position
-                        // (Implement movement logic if necessary)
-                    } else {
-                        add_game_message(map->enemy_count > 0 ? &((struct MessageQueue){0}) : NULL, "Failed to escape! The enemy attacks you.", 4);
-                        // Enemy attacks player
-                        player->hitpoints -= 5;
-                        if (player->hitpoints <= 0) {
-                            add_game_message(map->enemy_count > 0 ? &((struct MessageQueue){0}) : NULL, "The enemy has defeated you!", 7);
-                            in_combat = false;
-                        }
-                    }
-                }
-                break;
-
-            default:
-                // Invalid input, continue combat
-                break;
-        }
-
-        // Check for game over
-        if (player->hitpoints <= 0) {
-            in_combat = false;
-            // Handle game over in the main loop
-        }
-
-        refresh();
-    }
-}
-
 // Function to check if two points are adjacent (including diagonal)
 bool is_adjacent(struct Point p1, struct Point p2) {
     return (abs(p1.x - p2.x) <= 1 && abs(p1.y - p2.y) <= 1);
@@ -3423,16 +3087,6 @@ void deal_damage_to_enemy(struct Map* map, int x, int y, int damage, struct Mess
     }
 }
 
-// Function to throw a dagger
-void throw_dagger(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue) {
-    throw_ranged_weapon(player, weapon, map, message_queue, 5, false);
-}
-
-// Function to throw a magic wand (stun enemy)
-void throw_magic_wand(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue) {
-    throw_ranged_weapon(player, weapon, map, message_queue, 10, true);
-}
-
 // Function to stun an enemy
 void stun_enemy(struct Map* map, int x, int y, int damage, struct MessageQueue* message_queue) {
     for (int i = 0; i < map->enemy_count; i++) {
@@ -3442,104 +3096,6 @@ void stun_enemy(struct Map* map, int x, int y, int damage, struct MessageQueue* 
             add_game_message(message_queue, "The enemy is stunned and cannot move!", 2);  // Green color
             break; // Exit the loop after stunning the enemy
         }
-    }
-}
-
-// Function to throw arrows (similar to dagger)
-void throw_arrow(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue) {
-    throw_ranged_weapon(player, weapon, map, message_queue, 5, false);
-}
-
-void throw_ranged_weapon(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue, int range, bool stun) {
-    if (weapon->quantity == 0) {
-        add_game_message(message_queue, "No Ammunition.!", 7);
-        return;
-    }
-    weapon->quantity -= 1;
-    
-    clear();
-    mvprintw(0, 0, "Throw %s in which direction? (w/a/s/d): ", weapon->name);
-    refresh();
-
-    int direction = getch();
-    int dx = 0, dy = 0;
-
-    switch (tolower(direction)) {
-        case 'w': dy = -1; break;
-        case 's': dy = 1; break;
-        case 'a': dx = -1; break;
-        case 'd': dx = 1; break;
-        default:
-            add_game_message(message_queue, "Invalid direction!", 7);
-            return;
-    }
-
-    int new_x = player->location.x;
-    int new_y = player->location.y;
-
-    for (int i = 0; i < range; i++) {
-        new_x += dx;
-        new_y += dy;
-
-        if (!is_valid_tile(new_x, new_y)) break;
-
-        char target_tile = map->grid[new_y][new_x];
-
-        if (target_tile == WALL_HORIZONTAL || target_tile == WALL_VERTICAL) {
-            break;
-        }
-
-        if (stun) {
-            stun_enemy(map, new_x, new_y, weapon->damage, message_queue);
-        } else {
-            deal_damage_to_enemy(map, new_x, new_y, weapon->damage, message_queue);
-        }
-    }
-
-    char msg[100];
-    snprintf(msg, sizeof(msg), "You threw a %s.", weapon->name);
-    add_game_message(message_queue, msg, 2);
-}
-
-
-void use_weapon(Player* player, struct Map* map, struct MessageQueue* message_queue) {
-    if (player->equipped_weapon == -1) {
-        add_game_message(message_queue, "No weapon equipped!", 7);
-        return;
-    }
-
-    Weapon* weapon = &player->weapons[player->equipped_weapon];
-    switch (weapon->symbol) {
-        case WEAPON_MACE:
-        case WEAPON_SWORD:
-            for (int dx = -1; dx <= 1; dx++) {
-                for (int dy = -1; dy <= 1; dy++) {
-                    if (dx == 0 && dy == 0) continue;
-                    int target_x = player->location.x + dx;
-                    int target_y = player->location.y + dy;
-                    if (is_valid_tile(target_x, target_y)) {
-                        deal_damage_to_enemy(map, target_x, target_y, weapon->damage, message_queue);
-                    }
-                }
-            }
-            add_game_message(message_queue, weapon->symbol == WEAPON_MACE ? "You swung the Mace!" : "You swung the Sword!", 2);
-            break;
-
-        case WEAPON_DAGGER:
-            throw_dagger(player, weapon, map, message_queue);
-            break;
-
-        case WEAPON_MAGIC_WAND:
-            throw_magic_wand(player, weapon, map, message_queue);
-            break;
-
-        case WEAPON_ARROW:
-            throw_arrow(player, weapon, map, message_queue);
-            break;
-
-        default:
-            add_game_message(message_queue, "Unknown weapon type!", 7);
-            break;
     }
 }
 
@@ -3582,10 +3138,12 @@ void consume_food(Player* player, int food_index, struct MessageQueue* message_q
             break;
         case FOOD_MAGICAL:
             player->hitpoints += 10;
-            player->temporary_speed += 5;
-            player->temporary_speed_start_time = time(NULL);
-            add_game_message(message_queue, "Consumed Magical Food: Speed increased.", 2);
-            break;
+            // Instead of a separate `temporary_speed`, just reuse speed_spell_steps:
+            player->speed_spell_steps = 10;
+            add_game_message(message_queue,
+                "Consumed Magical Food: Speed increased for the next 10 moves!",
+                2);
+            break;//That way, you unify the code for speed effect. Whenever you decrement speed_spell_steps in move_character(), it will apply equally to either a Speed Spell usage or Magical Food usage.
         case FOOD_ROTTEN:
             player->hitpoints -= 5;
             add_game_message(message_queue, "Consumed Rotten Food: HP decreased.", 7);
@@ -3632,4 +3190,136 @@ int find_last_food_of_type(Player* player, FoodType type) {
     }
 
     return index;
+}
+
+
+void use_melee_weapon(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* msg_queue) {
+    // Damages all adjacent tiles (8 directions)
+    for (int dx = -1; dx <= 1; dx++) {
+        for (int dy = -1; dy <= 1; dy++) {
+            if (dx == 0 && dy == 0) continue;
+            int tx = player->location.x + dx;
+            int ty = player->location.y + dy;
+            if (is_valid_tile(tx, ty)) {
+                // Use weapon->damage plus any tempDamage
+                int dmg = weapon->damage + player->temporary_damage;
+                int base_damage = weapon->damage; 
+                // If “temporary_damage” or Great Food is also used, add that too:
+                base_damage += player->temporary_damage; 
+
+                if (player->damage_spell_steps > 0) {
+                    base_damage *= 2;  // double
+                }
+                // Then apply base_damage to the enemy
+                deal_damage_to_enemy(map, tx, ty, dmg, msg_queue);
+            }
+        }
+    }
+
+    char msg[128];
+    snprintf(msg, sizeof(msg), "You used your %s (melee)!", weapon->name);
+    add_game_message(msg_queue, msg, 2);
+}
+
+void ask_ranged_direction(int* dx, int* dy, const char* weapon_name) {
+    // Clear
+    clear();
+    mvprintw(0,0, "In which direction do you want to shoot your %s? (w/a/s/d): ", weapon_name);
+    refresh();
+
+    *dx = 0;
+    *dy = 0;
+    int ch = getch();
+    switch (tolower(ch)) {
+        case 'w': *dy = -1; break;
+        case 's': *dy =  1; break;
+        case 'a': *dx = -1; break;
+        case 'd': *dx =  1; break;
+        default:
+            // If invalid, keep dx=dy=0
+            break;
+    }
+}
+
+void throw_ranged_weapon_with_drop(
+    Player* player,
+    Weapon* weapon,
+    struct Map* map,
+    struct MessageQueue* message_queue,
+    int dx,
+    int dy){
+    // 1) Check ammo
+    if (weapon->quantity <= 0) {
+        add_game_message(message_queue, "No ammunition!", 7);
+        return;
+    }
+    weapon->quantity--; // use 1 shot
+
+    // 2) Setup
+    int cx = player->location.x;
+    int cy = player->location.y;
+
+    int max_range = (weapon->symbol == WEAPON_MAGIC_WAND) ? 10 : 5;
+    int last_floor_x = cx;
+    int last_floor_y = cy;
+
+    // 3) Travel loop
+    for (int step = 0; step < max_range; step++) {
+        cx += dx;
+        cy += dy;
+
+        // Out of bounds => stop
+        if (!is_valid_tile(cx, cy)) break;
+
+        // If it's a wall => destroy it, projectile is lost
+        if (map->grid[cy][cx] == WALL_HORIZONTAL ||
+            map->grid[cy][cx] == WALL_VERTICAL)
+        {
+            map->grid[cy][cx] = FLOOR;
+            add_game_message(message_queue,
+                             "Your projectile destroyed the wall and was lost.",
+                             2);
+            return;  // end
+        }
+
+        // If there's an enemy => deal damage, stop
+        bool hitEnemy = false;
+        for (int i = 0; i < map->enemy_count; i++) {
+            Enemy* e = &map->enemies[i];
+            if (e->position.x == cx && e->position.y == cy) {
+                // Found an enemy
+                int base_damage = weapon->damage + player->temporary_damage;
+                if (player->damage_spell_steps > 0) {
+                    base_damage *= 2;  // double if Damage Spell active
+                }
+                deal_damage_to_enemy(map, cx, cy, base_damage, message_queue);
+
+                add_game_message(message_queue,
+                    "Your projectile hit an enemy and stopped!",
+                    2);
+                hitEnemy = true;
+                break;
+            }
+        }
+        if (hitEnemy) return; // Stop traveling, no drop
+
+        // Otherwise, if floor or corridor => keep track of last floor
+        if (map->grid[cy][cx] == FLOOR ||
+            map->grid[cy][cx] == CORRIDOR)
+        {
+            last_floor_x = cx;
+            last_floor_y = cy;
+        }
+    }
+
+    // 4) If we reach here => no wall/enemy was hit
+    // => drop the projectile with quantity = 1
+    if (last_floor_x != player->location.x || 
+        last_floor_y != player->location.y)
+    {
+        map->grid[last_floor_y][last_floor_x] = weapon->symbol;
+        add_game_message(message_queue,
+            "Your projectile fell to the ground with 1 ammo remaining.",
+            2);
+    }
 }

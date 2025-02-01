@@ -58,6 +58,13 @@
 #define WEAPON_ARROW        '4'
 #define WEAPON_SWORD        '5'
 
+// define your new symbols as C-string constants
+static const char *MACE_SYMBOL       = "\u2692";   // ⚒
+static const char *SWORD_SYMBOL      = "\u2694";   // ⚔
+static const char *DAGGER_SYMBOL     = "\U0001F5E1"; // 🗡
+static const char *MAGIC_WAND_SYMBOL = "\U0001FA84"; // 🪄
+static const char *ARROW_SYMBOL      = "\u27B3";   // ➳
+
 // Spell Symbols
 #define SPELL_HEALTH '6'
 #define SPELL_SPEED  '7'
@@ -95,6 +102,7 @@
 #define TREASURE_CHEST_SYM  'C'
 
 
+#define MAX_DROPPED_ITEMS 50
 
 // Utility macros
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
@@ -199,6 +207,25 @@ typedef struct Room {
     Door doors[MAX_DOORS]; // Assuming a Door structure exists
 } Room;
 
+typedef enum {
+    MELEE,
+    RANGED
+} WeaponType;
+
+typedef struct Weapon {
+    char symbol;
+    char name[50];
+    int damage;
+    WeaponType type; // New field to specify weapon type
+    int quantity;    // For ranged weapons
+} Weapon;
+
+typedef struct DroppedItem {
+    bool active;
+    struct Point pos;
+    Weapon weapon; // store symbol, name, quantity, etc.
+} DroppedItem;
+
 struct Map {
     char grid[MAP_HEIGHT][MAP_WIDTH];
     bool visibility[MAP_HEIGHT][MAP_WIDTH];
@@ -226,20 +253,10 @@ struct Map {
     // Timers for hunger and health regeneration
     time_t last_hunger_decrease;
     time_t last_attack_time;
+
+    DroppedItem dropped_items[MAX_DROPPED_ITEMS];
+    int dropped_items_count;
 };
-
-typedef enum {
-    MELEE,
-    RANGED
-} WeaponType;
-
-typedef struct Weapon {
-    char symbol;
-    char name[50];
-    int damage;
-    WeaponType type; // New field to specify weapon type
-    int quantity;    // For ranged weapons
-} Weapon;
 
 // Spell Types
 typedef enum {
@@ -292,6 +309,10 @@ typedef struct Player {
 
     time_t temporary_damage_timer;
     time_t temporary_speed_timer; 
+
+    int health_spell_steps;  // Double regen
+    int damage_spell_steps;  // Double weapon damage
+    int speed_spell_steps;   // Move 2 tiles per keypress
 } Player;
 
 
@@ -329,10 +350,8 @@ static bool door_unlocked = false;
 
 // Game core functions
 void play_game(struct UserManager* manager, struct Map* game_map, 
-               struct Point* character_location, int initial_score);
+               Player* player, int initial_score);
 void init_map(struct Map* map);
-void create_corridors(Room* rooms, int room_count, char map[MAP_HEIGHT][MAP_WIDTH]);
-void open_inventory_menu(Player* player, struct MessageQueue* message_queue);
 void add_traps(struct Map* game_map);
 void print_password_messages(const char* message, int line_offset);
 Room* find_room_by_position(struct Map* map, int x, int y);
@@ -344,7 +363,6 @@ void place_room(struct Map* map, struct Room* room);
 void place_stairs(struct Map* map);
 void place_pillars(struct Map* map, struct Room* room);
 void place_windows(struct Map* map, struct Room* room);
-bool validate_stair_placement(struct Map* map);
 bool prompt_for_password_door(Room* door_room);
 void place_secret_doors(struct Map* map);
 void print_full_map(struct Map* game_map, struct Point* character_location, struct UserManager* manager);
@@ -357,21 +375,17 @@ void list_saved_games(struct UserManager* manager);
 
 // Room connectivity
 void connect_rooms_with_corridors(struct Map* map);
-bool canSeeRoomThroughWindow(struct Map* game_map, struct Room* room1, struct Room* room2);
 
 // Movement and visibility
 // game.h
 void move_character(Player* player, int key, struct Map* game_map, int* hitpoints, struct MessageQueue* message_queue);
 void place_password_generator_in_corner(struct Map* map, struct Room* room);
 void update_visibility(struct Map* map, struct Point* player_pos, bool visible[MAP_HEIGHT][MAP_WIDTH]);
-void sight_range(struct Map* game_map, struct Point* character_location);
 void add_ancient_key(struct Map* game_map);
 
 // Helper functions
 int manhattanDistance(int x1, int y1, int x2, int y2);
 bool isPointInRoom(struct Point* point, struct Room* room);
-void showRoom(struct Map* game_map, struct Room* room, char visible[MAP_HEIGHT][MAP_WIDTH]);
-bool can_see_room(struct Map* map, struct Room* room1, struct Room* room2);
 void print_point(struct Point p, const char* type);
 void place_password_generator_in_corner(struct Map* game_map, struct Room* room);
 
@@ -389,19 +403,17 @@ struct Map generate_map(struct Room* previous_room, int current_level, int max_l
 void add_weapons(struct Map* map, Player* player);
 void handle_weapon_pickup(Player* player, struct Map* map, struct Point new_location, struct MessageQueue* message_queue);
 void open_weapon_inventory_menu(Player* player, struct Map* map, struct MessageQueue* message_queue);
-const char* symbol_to_name(char symbol);
 Weapon create_weapon(char symbol);
-//void display_weapons_inventory(Player* player);
-void equip_weapon(Player* player, int weapon_index);
-void use_weapon(Player* player, struct Map* map, struct MessageQueue* message_queue);
 bool is_melee_weapon(Weapon weapon);
 int get_ranged_weapon_count(Player* player, Weapon weapon);
+void ask_ranged_direction(int* dx, int* dy, const char* weapon_name);
+
 
 // Function Declarations
 Spell create_spell(char symbol);
 void handle_spell_pickup(Player* player, struct Map* map, struct Point new_location, struct MessageQueue* message_queue);
-void open_spell_inventory_menu(struct Map* game_map, Player* player);
-void use_spell(Player* player, struct Map* game_map);
+void open_spell_inventory_menu(struct Map* game_map, Player* player, struct MessageQueue* message_queue);
+void use_spell(Player* player, struct Map* game_map, struct MessageQueue* message_queue);
 const char* spell_type_to_name(SpellType type);
 void add_spells(struct Map* game_map);
 
@@ -411,13 +423,12 @@ void render_enemies(struct Map* map);
 void update_enemies(struct Map* map, Player* player, struct MessageQueue* message_queue);
 void move_enemy_towards_player(Enemy* enemy, Player* player, struct Map* map);
 bool is_enemy_in_same_room(Player* player, Enemy* enemy, struct Map* map);
-void combat(Player* player, Enemy* enemy, struct Map* map, int* hitpoints);
 
-void throw_arrow(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue);
 void stun_enemy(struct Map* map, int x, int y, int damage, struct MessageQueue* message_queue);
-void throw_magic_wand(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue);
-void throw_ranged_weapon(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue, int range, bool stun);
-void throw_dagger(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue);
+void throw_ranged_weapon_with_drop(
+    Player* player, Weapon* weapon, struct Map* map,
+    struct MessageQueue* msg_queue, int dx, int dy);
+void use_melee_weapon(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* msg_queue);
 void deal_damage_to_enemy(struct Map* map, int x, int y, int damage, struct MessageQueue* message_queue);
 bool is_valid_tile(int x, int y);
 bool is_adjacent(struct Point p1, struct Point p2);
