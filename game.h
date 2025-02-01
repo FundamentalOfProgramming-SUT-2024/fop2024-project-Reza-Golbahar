@@ -137,6 +137,7 @@ typedef struct Food {
     FoodType type;
     struct Point position;
     time_t spawn_time;        // Time when the food was placed on the map
+    time_t pickup_time;
     bool consumed;            // Flag to indicate if the food has been consumed
 } Food;
 
@@ -265,6 +266,8 @@ typedef struct Player {
 
     int food_count; // New food count
     int gold_count;
+
+    Food foods[100];
     
     // Weapon inventory
     Weapon weapons[MAX_WEAPONS];
@@ -405,8 +408,8 @@ void add_spells(struct Map* game_map);
 // Function Declarations for Enemies
 void add_enemies(struct Map* map, int current_level);
 void render_enemies(struct Map* map);
-void update_enemies(struct Map* map, Player* player, int* hitpoints, struct MessageQueue* message_queue);
-void move_enemies_one_tile(Player* player, struct Map* map, struct MessageQueue* message_queue);
+void update_enemies(struct Map* map, Player* player, struct MessageQueue* message_queue);
+void move_enemy_towards_player(Enemy* enemy, Player* player, struct Map* map);
 bool is_enemy_in_same_room(Player* player, Enemy* enemy, struct Map* map);
 void combat(Player* player, Enemy* enemy, struct Map* map, int* hitpoints);
 
@@ -421,8 +424,10 @@ bool is_adjacent(struct Point p1, struct Point p2);
 
 // Function Declarations for Food
 void add_food(struct Map* map, Player* player);
-void handle_food_consumption(Player* player, struct Map* map, struct MessageQueue* message_queue);
+int find_last_food_of_type(Player* player, FoodType type);
 void update_food_items(struct Map* map, struct MessageQueue* message_queue);
+void update_food_inventory(Player* player, struct MessageQueue* message_queue);
+void open_food_inventory_menu(Player* player, struct MessageQueue* message_queue);
 
 // Function Declarations for Gold
 void add_gold(struct Map* map, Player* player);
@@ -430,7 +435,7 @@ void handle_gold_collection(Player* player, struct Map* map, struct MessageQueue
 
 // Hunger and Health Mechanics
 void update_hunger_and_health(Player* player, struct Map* map, struct MessageQueue* message_queue);
-void consume_food(Player* player, struct MessageQueue* message_queue);
+void consume_food(Player* player, int food_index, struct MessageQueue* message_queue);
 void collect_food(Player* player, struct Map* map, struct MessageQueue* message_queue);
 // Ensure this is in game.c
 void update_temporary_effects(Player* player, struct Map* map, struct MessageQueue* message_queue);

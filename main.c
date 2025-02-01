@@ -1,4 +1,4 @@
-#include <ncurses.h>
+#include <ncursesw/ncurses.h>
 #include <stdlib.h>
 #include <time.h>
 #include <locale.h>

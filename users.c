@@ -294,9 +294,9 @@ void print_scoreboard(struct UserManager* manager) {
             if (i < 3) {
                 // Top 3 players get special colors and medals
                 attron(COLOR_PAIR(i + 1) | A_BOLD | A_ITALIC);
-                //const char* medals[] = {"🏆", "🥈", "🥉"};
+                const char* medals[] = {"🏆", "🥈", "🥉"};
                 const char* titles[] = {"GOAT", "Legend", "Champion"};
-                //mvwprintw(row, 0, "%s %d", medals[i], i + 1);
+                mvprintw(row, 0, "%s %d", medals[i], i + 1);
                 mvprintw(row, 70, "%s", titles[i]);
                 attroff(COLOR_PAIR(i + 1) | A_BOLD | A_ITALIC);
             } else {
@@ -308,7 +308,7 @@ void print_scoreboard(struct UserManager* manager) {
             if (manager->current_user && 
                 strcmp(user->username, manager->current_user->username) == 0) {
                 attron(COLOR_PAIR(4) | A_BOLD);
-                mvprintw(row, 0, "You****");
+                mvprintw(row, 80, "You****");
             }
             
             if (i<3 && strcmp(user->username, manager->current_user->username) != 0)

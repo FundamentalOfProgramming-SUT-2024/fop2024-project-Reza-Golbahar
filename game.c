@@ -180,11 +180,13 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         update_hunger_and_health(&player, game_map, &message_queue);
 
         // Update enemies
-        update_enemies(game_map, &player, &player.hitpoints, &message_queue);
+        update_enemies(game_map, &player, &message_queue);
 
         // Display messages
         draw_messages(&message_queue, 0, MAP_WIDTH+1);
         update_messages(&message_queue);
+        
+        update_food_inventory(&player, &message_queue);
         // Handle input
 
 
@@ -209,7 +211,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                 move_character(&player, key, game_map, &player.hitpoints, &message_queue);
                 *character_location = player.location; // Synchronize positions
 
-                update_enemies(game_map, &player, &player.hitpoints, &message_queue);
+                update_enemies(game_map, &player, &message_queue);
                 // Check the tile the player moves onto
                 char tile = game_map->grid[character_location->y][character_location->x];
 
@@ -246,7 +248,6 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                 } else if (tile == FOOD_NORMAL_SYM || tile == FOOD_GREAT_SYM || 
                     tile == FOOD_MAGICAL_SYM || tile == FOOD_ROTTEN_SYM) {
                     // Collect food
-                    handle_food_consumption(&player, game_map, &message_queue);
                 } else if (tile == GOLD_NORMAL_SYM || tile == GOLD_BLACK_SYM) {
                     // Collect gold
                     handle_gold_collection(&player, game_map, &message_queue);
@@ -276,7 +277,8 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             case 'e':
             case 'E':
                 // Open inventory menu
-                open_inventory_menu(&player, &message_queue);
+                //open_inventory_menu(&player, &message_queue);
+                open_food_inventory_menu(&player, &message_queue);
                 break;
 
             case 'a':
@@ -717,7 +719,7 @@ void open_inventory_menu(Player* player, struct MessageQueue* message_queue){
                 int slot = atoi(input) - 1; // Convert to 0-based index
 
                 if (slot >= 0 && slot < player->food_count) {
-                    consume_food(player, message_queue);
+                    consume_food(player, slot, message_queue);
                 } else {
                     add_game_message(message_queue, "Invalid food slot number!", 7); // Red color
                 }
@@ -884,7 +886,6 @@ void add_food(struct Map* map, Player* player) {
                     break;
             }
 
-            player->food_count++;
             map->food_count++;
             placed = true;
             break;
@@ -895,58 +896,6 @@ void add_food(struct Map* map, Player* player) {
         // Could not place food after 100 attempts
         // Optionally, handle this scenario
         printf("Warning: Failed to place food after 100 attempts.\n");
-    }
-}
-
-// Function to handle food consumption
-void handle_food_consumption(Player* player, struct Map* map, struct MessageQueue* message_queue) {
-    struct Point pos = player->location;
-    for (int i = 0; i < map->food_count; i++) {
-        if (!map->foods[i].consumed && map->foods[i].position.x == pos.x && map->foods[i].position.y == pos.y) {
-            // Consume the food
-            FoodType type = map->foods[i].type;
-            map->foods[i].consumed = true;
-            map->grid[pos.y][pos.x] = FLOOR; // Remove food symbol from map
-
-            char message[100];
-            switch(type) {
-                case FOOD_NORMAL:
-                    player->hitpoints += 20;
-                    snprintf(message, sizeof(message), "You ate Normal Food: +20 HP.");
-                    add_game_message(message_queue, message, COLOR_PAIR_HEALTH); // Green color
-                    break;
-                case FOOD_GREAT:
-                    player->hitpoints += 10;
-                    // Add temporary damage boost
-                    player->temporary_damage += 5;
-                    player->temporary_damage_timer = time(NULL) + 30; // e.g., 30 seconds
-                    snprintf(message, sizeof(message), "You ate Great Food: +10 HP and +5 Damage (30s).");
-                    add_game_message(message_queue, message, COLOR_PAIR_SPEED); // Yellow color
-                    break;
-                case FOOD_MAGICAL:
-                    player->hitpoints += 10;
-                    // Add temporary speed boost
-                    player->temporary_speed += 1;
-                    player->temporary_speed_timer = time(NULL) + 30; // e.g., 30 seconds
-                    snprintf(message, sizeof(message), "You ate Magical Food: +10 HP and +Speed (30s).");
-                    add_game_message(message_queue, message, COLOR_PAIR_SPEED); // Green color
-                    break;
-                case FOOD_ROTTEN:
-                    player->hitpoints -= 5;
-                    snprintf(message, sizeof(message), "You ate Rotten Food: -5 HP.");
-                    add_game_message(message_queue, message, COLOR_PAIR_DAMAGE); // Red color
-                    break;
-                default:
-                    // Handle unknown food types
-                    break;
-            }
-
-            // Clamp hitpoints to a maximum value, e.g., 100
-            if (player->hitpoints > 100) player->hitpoints = 100;
-            if (player->hitpoints < 0) player->hitpoints = 0;
-
-            break; // Assuming only one food item per tile
-        }
     }
 }
 
@@ -994,6 +943,145 @@ void update_food_items(struct Map* map, struct MessageQueue* message_queue) {
             }
         }
     }
+}
+
+void update_food_inventory(Player* player, struct MessageQueue* message_queue) {
+    time_t current_time = time(NULL);
+    for (int i = 0; i < player->food_count; i++) {
+        Food* food = &player->foods[i];
+        if (!food->consumed && difftime(current_time, food->pickup_time) >= 60.0) {
+            if (food->type == FOOD_GREAT || food->type == FOOD_MAGICAL) {
+                food->type = FOOD_NORMAL;
+                add_game_message(message_queue, "Great or Magical Food has turned into Normal Food.", 14);
+            } else if (food->type == FOOD_NORMAL) {
+                food->type = FOOD_ROTTEN;
+            }
+        }
+    }
+}
+
+void open_food_inventory_menu(Player* player, struct MessageQueue* message_queue) {
+    clear();
+    
+    // Tally how many of each type are unconsumed
+    int normal_count = 0;
+    int great_count = 0;
+    int magical_count = 0;
+    
+    time_t current_time = time(NULL);
+
+    // Track the most recent pickup_time for each type, to show elapsed seconds
+    time_t normal_last_pick = 0;
+    time_t great_last_pick = 0;
+    time_t magical_last_pick = 0;
+
+    // Count items in inventory
+    for (int i = 0; i < player->food_count; i++) {
+        Food* f = &player->foods[i];
+        if (f->consumed) continue;  // skip consumed
+        switch(f->type) {
+            case FOOD_NORMAL:
+                normal_count++;
+                if (f->pickup_time > normal_last_pick) {
+                    normal_last_pick = f->pickup_time;
+                }
+                break;
+            case FOOD_GREAT:
+                great_count++;
+                if (f->pickup_time > great_last_pick) {
+                    great_last_pick = f->pickup_time;
+                }
+                break;
+            case FOOD_MAGICAL:
+                magical_count++;
+                if (f->pickup_time > magical_last_pick) {
+                    magical_last_pick = f->pickup_time;
+                }
+                break;
+            case FOOD_ROTTEN:
+                // You might or might not want to display rotten here,
+                // but user asked for Normal/Great/Magical specifically.
+                break;
+        }
+    }
+
+    // Compute how many seconds since each last item was picked
+    double normal_elapsed   = normal_last_pick   ? difftime(current_time, normal_last_pick)   : 0;
+    double great_elapsed    = great_last_pick    ? difftime(current_time, great_last_pick)    : 0;
+    double magical_elapsed  = magical_last_pick  ? difftime(current_time, magical_last_pick)  : 0;
+
+    // Print the menu
+    mvprintw(0, 0, "Food Inventory:");
+
+    // Show normal food row
+    // If normal_count > 0, show how many seconds since last item was picked
+    // If no items, that row's 'elapsed' is just 0 or some placeholder
+    mvprintw(2, 0,
+             "Normal Food: %d  (%.0f sec since last pick)  - Increases 10 HP, decreases hunger by 10.",
+             normal_count, normal_elapsed);
+
+    mvprintw(3, 0,
+             "Great Food:  %d  (%.0f sec since last pick)  - +10 HP, +5 weapon dmg for 30s.",
+             great_count, great_elapsed);
+
+    mvprintw(4, 0,
+             "Magical Food:%d  (%.0f sec since last pick)  - +10 HP, +Speed for 30s.",
+             magical_count, magical_elapsed);
+
+    // Instructions
+    mvprintw(6, 0, "Press 'u' followed by <type> to use last item of that type (normal/great/magical).");
+    mvprintw(7, 0, "Press 'q' to quit.");
+    mvprintw(9, 0, "Choice: ");
+
+    refresh();
+
+    // Input (example approach)
+    char input[32];
+    echo();
+    getnstr(input, 31);
+    noecho();
+
+    if (tolower(input[0]) == 'q') {
+        // Quit
+        return;
+    }
+    else if (tolower(input[0]) == 'u') {
+        // e.g. user typed "u normal"
+        char type_str[16];
+        if (sscanf(input + 1, "%s", type_str) == 1) {
+            // convert to lower
+            for (int i = 0; type_str[i]; i++) {
+                type_str[i] = tolower((unsigned char)type_str[i]);
+            }
+
+            // Decide which type to use
+            FoodType type_to_consume = FOOD_NORMAL;
+            if (strcmp(type_str, "normal") == 0) {
+                type_to_consume = FOOD_NORMAL;
+            }
+            else if (strcmp(type_str, "great") == 0) {
+                type_to_consume = FOOD_GREAT;
+            }
+            else if (strcmp(type_str, "magical") == 0) {
+                type_to_consume = FOOD_MAGICAL;
+            }
+            else {
+                add_game_message(message_queue, "Unknown food type! Use 'normal', 'great', or 'magical'.", 7);
+                return;
+            }
+
+            // Find the last item of that type
+            int index = find_last_food_of_type(player, type_to_consume);
+            if (index == -1) {
+                add_game_message(message_queue, "You have no unconsumed items of that type!", 7);
+            } else {
+                // Actually consume it
+                consume_food(player, index, message_queue);
+            }
+        }
+    }
+    // If typed something else, just ignore or handle error
+    getch();  // pause to let user see any resulting messages
 }
 
 
@@ -1611,7 +1699,8 @@ void move_character(Player* player, int key, struct Map* game_map, int* hitpoint
 
     handle_spell_pickup(player, game_map, new_location, message_queue);
 
-    handle_food_consumption(player, game_map, message_queue);
+    
+    collect_food(player, game_map, message_queue);
     handle_gold_collection(player, game_map, message_queue);
 
 
@@ -1757,7 +1846,6 @@ void update_password_display() {
 }
 
 void init_map(struct Map* map) {
-    // Initialize the grid and visibility
     for (int y = 0; y < MAP_HEIGHT; y++) {
         for (int x = 0; x < MAP_WIDTH; x++) {
             map->grid[y][x] = FOG;
@@ -1766,21 +1854,18 @@ void init_map(struct Map* map) {
         }
     }
 
-    // Initialize counts for rooms, traps, enemies, etc.
     map->room_count = 0;
-    map->trap_count = 0;  // Initialize trap count
+    map->trap_count = 0;
     map->enemy_count = 0;
 
-    // Initialize gold array
-    map->gold_count = 0;  // Number of golds
+    map->gold_count = 0;
     for (int i = 0; i < MAX_GOLDS; i++) {
-        map->golds[i].type = GOLD_NORMAL; // Default type
-        map->golds[i].collected = false; 
-        map->golds[i].position.x = -1;   // Default invalid position
-        map->golds[i].position.y = -1;   // Default invalid position
+        map->golds[i].type = GOLD_NORMAL;
+        map->golds[i].collected = false;
+        map->golds[i].position.x = -1;
+        map->golds[i].position.y = -1;
     }
 
-    // Initialize food array
     map->food_count = 0;
     for (int i = 0; i < 100; i++) {
         map->foods[i].type = FOOD_NORMAL;
@@ -1789,8 +1874,7 @@ void init_map(struct Map* map) {
         map->foods[i].position.y = -1;
         map->foods[i].spawn_time = 0;
     }
-    
-    // Initialize other map attributes as needed
+
     map->last_hunger_decrease = time(NULL);
     map->last_attack_time = time(NULL);
 }
@@ -3064,63 +3148,53 @@ void use_spell(Player* player, struct Map* game_map) {
 }
 
 void add_enemies(struct Map* map, int current_level) {
-    // Define the number of enemies based on the current level
-    // For example, increase the number of enemies with each level
-    int enemies_to_add = current_level * 2; // Adjust as needed
-    
+    int enemies_to_add = current_level * 2;
+
     for (int i = 0; i < enemies_to_add && map->enemy_count < MAX_ENEMIES; i++) {
-        // Select a random room to place the enemy
-        if (map->room_count == 0) break; // No rooms to place enemies
-        
+        if (map->room_count == 0) break;
+
         int room_index = rand() % map->room_count;
         Room* room = &map->rooms[room_index];
-        
-        // Ensure the room is not the Treasure Room
         if (room->theme == THEME_TREASURE) continue;
-        
-        // Select a random position within the room
+
         int x = room->left_wall + 1 + rand() % (room->width - 2);
         int y = room->top_wall + 1 + rand() % (room->height - 2);
-        
-        // Check if the tile is empty (floor)
+
         if (map->grid[y][x] == FLOOR) {
-            // Initialize the enemy with random type
             Enemy enemy;
-            int enemy_type_rand = rand() % 4; // 4 new enemy types
+            int enemy_type_rand = rand() % 5;
 
             switch(enemy_type_rand) {
                 case 0:
-                    enemy.type = ENEMY_DEMON;
+                    enemy.type = 'D';
                     enemy.hp = 5;
                     break;
                 case 1:
-                    enemy.type = ENEMY_GIANT;
-                    enemy.hp = 15;
+                    enemy.type = 'F';
+                    enemy.hp = 10;
                     break;
                 case 2:
-                    enemy.type = ENEMY_SNAKE;
-                    enemy.hp = 20;
+                    enemy.type = 'G';
+                    enemy.hp = 15;
                     break;
                 case 3:
-                    enemy.type = ENEMY_UNDEAD;
+                    enemy.type = 'S';
+                    enemy.hp = 20;
+                    break;
+                case 4:
+                    enemy.type = 'U';
                     enemy.hp = 30;
                     break;
-                default:
-                    enemy.type = ENEMY_FIRE_BREATHING_MONSTER;
-                    enemy.hp = 10;
             }
 
             enemy.position.x = x;
             enemy.position.y = y;
-            enemy.active = false; // Initially inactive
+            enemy.active = false;
             enemy.chasing = false;
             enemy.adjacent_attack = false;
 
-            // Add enemy to the map
             map->enemies[map->enemy_count++] = enemy;
-            
-            // Represent the enemy on the map
-            map->grid[y][x] = enemy.type; // 'D', 'G', 'S', 'U', etc.
+            map->grid[y][x] = enemy.type;
         }
     }
 }
@@ -3169,88 +3243,60 @@ bool is_enemy_in_same_room(Player* player, Enemy* enemy, struct Map* map) {
     return (find_room_by_position(map, player->location.x, player->location.y) == find_room_by_position(map, enemy->position.x, enemy->position.y));
 }
 
-void update_enemies(struct Map* map, Player* player, int* hitpoints, struct MessageQueue* message_queue) {
+void update_enemies(struct Map* map, Player* player, struct MessageQueue* message_queue) {
     for (int i = 0; i < map->enemy_count; i++) {
         Enemy* enemy = &map->enemies[i];
-        if (!enemy->active) continue;
-
-        // Activate enemy if in the same room
-        if (!enemy->chasing && is_enemy_in_same_room(player, enemy, map)) {
+        if (!enemy->active && is_adjacent(player->location, enemy->position)) {
             enemy->active = true;
             enemy->chasing = true;
-            add_game_message(message_queue, "An enemy has spotted you!", 16); // Adjust color pair as needed
+            char msg[100];
+            snprintf(msg, sizeof(msg), "A %c is activated with %d HP!", enemy->type, enemy->hp);
+            add_game_message(message_queue, msg, 2);
         }
 
-        // Handle chasing behavior
         if (enemy->chasing) {
-            move_enemies_one_tile(player, map, message_queue);
+            move_enemy_towards_player(enemy, player, map);
+
+            if (enemy->type == 'G' || enemy->type == 'U') {
+                int distance = manhattanDistance(player->location.x, player->location.y, enemy->position.x, enemy->position.y);
+                if (distance > 5) {
+                    enemy->chasing = false;
+                }
+            } else if (enemy->type == 'D' || enemy->type == 'F') {
+                if (!is_enemy_in_same_room(player, enemy, map)) {
+                    enemy->chasing = false;
+                }
+            }
         }
 
-        // Check for adjacent enemy and deal damage
         if (is_adjacent(player->location, enemy->position)) {
-            *hitpoints -= enemy->hp;
+            player->hitpoints -= enemy->hp;
             map->last_attack_time = time(NULL);
-            char damage_msg[100];
-            snprintf(damage_msg, sizeof(damage_msg), "An enemy attacked you! Damage: %d", enemy->hp);
-            add_game_message(message_queue, damage_msg, 7);  // Red color
+            char attack_msg[100];
+            snprintf(attack_msg, sizeof(attack_msg), "A %c attacked you! Damage: %d", enemy->type, enemy->hp);
+            add_game_message(message_queue, attack_msg, 7);
+            if (player->hitpoints <= 0) {
+                add_game_message(message_queue, "Game Over! You were defeated.", 7);
+            }
         }
     }
 }
 
-void move_enemies_one_tile(Player* player, struct Map* map, struct MessageQueue* message_queue) {
-    for (int i = 0; i < map->enemy_count; i++) {
-        Enemy* enemy = &map->enemies[i];
-        if (enemy->active) {
-            // Determine direction towards the player
-            int dx = player->location.x - enemy->position.x;
-            int dy = player->location.y - enemy->position.y;
+void move_enemy_towards_player(Enemy* enemy, Player* player, struct Map* map) {
+    int dx = player->location.x - enemy->position.x;
+    int dy = player->location.y - enemy->position.y;
 
-            // Normalize movement to one step
-            if (dx != 0) dx = dx / abs(dx);
-            if (dy != 0) dy = dy / abs(dy);
+    if (dx != 0) dx = dx / abs(dx);
+    if (dy != 0) dy = dy / abs(dy);
 
-            int new_x = enemy->position.x + dx;
-            int new_y = enemy->position.y + dy;
+    int new_x = enemy->position.x + dx;
+    int new_y = enemy->position.y + dy;
 
-            // Check map boundaries
-            if (new_x < 0 || new_x >= MAP_WIDTH || new_y < 0 || new_y >= MAP_HEIGHT)
-                continue;
-
-            char target_tile = map->grid[new_y][new_x];
-
-            // Check if the tile is passable (floor or player)
-            if (target_tile == FLOOR || target_tile == PLAYER_CHAR) {
-                // Check if another enemy is already on the target tile
-                bool occupied = false;
-                for (int j = 0; j < map->enemy_count; j++) {
-                    if (j == i) continue; // Skip self
-                    if (map->enemies[j].position.x == new_x && 
-                        map->enemies[j].position.y == new_y) {
-                        occupied = true;
-                        break;
-                    }
-                }
-
-                if (!occupied) {
-                    // Update the map grid
-                    map->grid[enemy->position.y][enemy->position.x] = FLOOR; // Remove enemy from current position
-                    enemy->position.x = new_x;
-                    enemy->position.y = new_y;
-                    map->grid[new_y][new_x] = enemy->type; // Place enemy at new position
-
-                    // Check if enemy has moved onto the player's tile
-                    if (new_x == player->location.x && new_y == player->location.y) {
-                        // Enemy attacks player
-                        player->hitpoints -= enemy->hp; // Damage based on enemy's HP or damage attribute
-                        add_game_message(message_queue, "An enemy has attacked you!", 7); // Red color
-                        if (player->hitpoints <= 0) {
-                            add_game_message(message_queue, "Game Over! You were defeated by an enemy.", 7); // Red color
-                            // Handle game over
-                        }
-                    }
-                }
-            }
-        }
+    if (new_x >= 0 && new_x < MAP_WIDTH && new_y >= 0 && new_y < MAP_HEIGHT && map->grid[new_y][new_x] == FLOOR) {
+        map->grid[enemy->position.y][enemy->position.x] = FLOOR;
+        enemy->position.x = new_x;
+        enemy->position.y = new_y;
+        map->grid[new_y][new_x] = enemy->type;
     }
 }
 
@@ -3405,6 +3451,12 @@ void throw_arrow(Player* player, Weapon* weapon, struct Map* map, struct Message
 }
 
 void throw_ranged_weapon(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue, int range, bool stun) {
+    if (weapon->quantity == 0) {
+        add_game_message(message_queue, "No Ammunition.!", 7);
+        return;
+    }
+    weapon->quantity -= 1;
+    
     clear();
     mvprintw(0, 0, "Throw %s in which direction? (w/a/s/d): ", weapon->name);
     refresh();
@@ -3443,9 +3495,6 @@ void throw_ranged_weapon(Player* player, Weapon* weapon, struct Map* map, struct
             deal_damage_to_enemy(map, new_x, new_y, weapon->damage, message_queue);
         }
     }
-
-    weapon->quantity -= 1;
-    if (weapon->quantity < 0) weapon->quantity = 0;
 
     char msg[100];
     snprintf(msg, sizeof(msg), "You threw a %s.", weapon->name);
@@ -3515,19 +3564,35 @@ void update_temporary_effects(Player* player, struct Map* map, struct MessageQue
 }
 
 // Function to handle food consumption from inventory
-void consume_food(Player* player, struct MessageQueue* message_queue) {
-    if (player->food_count <= 0) {
-        add_game_message(message_queue, "No food to consume!", 7); // Red color
-        return;
+void consume_food(Player* player, int food_index, struct MessageQueue* message_queue) {
+    if (food_index < 0 || food_index >= player->food_count) return;
+    Food* food = &player->foods[food_index];
+
+    switch(food->type) {
+        case FOOD_NORMAL:
+            player->hitpoints += 10;
+            player->hunger_rate -= 10;
+            add_game_message(message_queue, "Consumed Normal Food.", 2);
+            break;
+        case FOOD_GREAT:
+            player->hitpoints += 10;
+            player->temporary_damage += 5;
+            player->temporary_damage_start_time = time(NULL);
+            add_game_message(message_queue, "Consumed Great Food: Weapon damage increased.", 2);
+            break;
+        case FOOD_MAGICAL:
+            player->hitpoints += 10;
+            player->temporary_speed += 5;
+            player->temporary_speed_start_time = time(NULL);
+            add_game_message(message_queue, "Consumed Magical Food: Speed increased.", 2);
+            break;
+        case FOOD_ROTTEN:
+            player->hitpoints -= 5;
+            add_game_message(message_queue, "Consumed Rotten Food: HP decreased.", 7);
+            break;
     }
 
-    // Consume the food
-    player->food_count--;
-
-    // Decrease hunger rate
-    player->hunger_rate = (player->hunger_rate >= 20) ? (player->hunger_rate - 20) : 0;
-
-    add_game_message(message_queue, "You consumed food and decreased hunger.", 2); // Green color
+    food->consumed = true;
 }
 
 // Function to collect food (add to inventory)
@@ -3535,18 +3600,36 @@ void collect_food(Player* player, struct Map* map, struct MessageQueue* message_
     struct Point pos = player->location;
     for (int i = 0; i < map->food_count; i++) {
         if (!map->foods[i].consumed && map->foods[i].position.x == pos.x && map->foods[i].position.y == pos.y) {
-            // Add food to player's inventory
             if (player->food_count < MAX_FOOD_COUNT) {
-                player->food_count++;
+                player->foods[player->food_count++] = map->foods[i];
+                player->foods[player->food_count - 1].pickup_time = time(NULL);
                 map->foods[i].consumed = true;
-                map->grid[pos.y][pos.x] = FLOOR; // Remove food symbol from map
-
-                add_game_message(message_queue, "You picked up some food!", 2); // Green color
+                map->grid[pos.y][pos.x] = FLOOR;
+                add_game_message(message_queue, "Picked up food.", 2);
             } else {
-                add_game_message(message_queue, "Your food inventory is full!", 7); // Red color
+                add_game_message(message_queue, "Food inventory full!", 7);
             }
-            break; // Assuming only one food item per tile
+            break;
         }
     }
 }
 
+// Finds the array index of the most recently picked (i.e., highest pickup_time)
+// item of a given FoodType. Returns -1 if none is found.
+int find_last_food_of_type(Player* player, FoodType type) {
+    int index = -1;
+    time_t latest_time = 0;
+
+    for (int i = 0; i < player->food_count; i++) {
+        Food* f = &player->foods[i];
+        if (!f->consumed && f->type == type) {
+            // Check if this item was picked up more recently
+            if (f->pickup_time > latest_time) {
+                latest_time = f->pickup_time;
+                index = i;
+            }
+        }
+    }
+
+    return index;
+}
