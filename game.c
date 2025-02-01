@@ -67,6 +67,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
     //it was at generate_map before
     add_food(game_map, &player);
     add_gold(game_map, &player);
+    add_weapons(game_map, &player);
 
 
     const int MAX_HUNGER = 100;     // Threshold for hunger affecting hitpoints
@@ -105,20 +106,6 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             // Display only visible parts of the map
             print_map(game_map, visible, *character_location, manager);
         }
-
-        update_temporary_effects(&player, game_map, &message_queue);
-
-        update_password_display();
-
-        // Update hunger rate and health regeneration
-        update_hunger_and_health(&player, game_map, &message_queue);
-
-        // Update enemies
-        update_enemies(game_map, &player, &player.hitpoints, &message_queue);
-
-        // Display messages
-        draw_messages(&message_queue, 0, MAP_WIDTH+1);
-        update_messages(&message_queue);
 
         // Render enemies
         render_enemies(game_map);
@@ -185,7 +172,19 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             add_gold(game_map, &player);
             last_item_add_time = time(NULL);
         }
+        update_temporary_effects(&player, game_map, &message_queue);
 
+        update_password_display();
+
+        // Update hunger rate and health regeneration
+        update_hunger_and_health(&player, game_map, &message_queue);
+
+        // Update enemies
+        update_enemies(game_map, &player, &player.hitpoints, &message_queue);
+
+        // Display messages
+        draw_messages(&message_queue, 0, MAP_WIDTH+1);
+        update_messages(&message_queue);
         // Handle input
 
 
@@ -573,7 +572,6 @@ struct Map generate_map(struct Room* previous_room, int current_level, int max_l
 
     // Spawn items and features
     add_traps(&map);
-    add_weapons(&map);
     add_spells(&map);
 
     // Place the single Ancient Key
@@ -2422,35 +2420,35 @@ void place_windows(struct Map* map, struct Room* room) {
 Weapon create_weapon(char symbol) {
     Weapon weapon;
     weapon.symbol = symbol;
-    
+
     switch(symbol) {
         case WEAPON_MACE:
             strcpy(weapon.name, "Mace");
-            weapon.damage = 15;
+            weapon.damage = 5;
             weapon.type = MELEE;
-            weapon.quantity = 1; // Melee weapons have a fixed count
+            weapon.quantity = 1;
             break;
         case WEAPON_DAGGER:
             strcpy(weapon.name, "Dagger");
-            weapon.damage = 10;
+            weapon.damage = 12;
             weapon.type = RANGED;
-            weapon.quantity = 10; // Example starting quantity
+            weapon.quantity = 10;
             break;
         case WEAPON_MAGIC_WAND:
             strcpy(weapon.name, "Magic Wand");
-            weapon.damage = 20;
+            weapon.damage = 15;
             weapon.type = RANGED;
-            weapon.quantity = 5;
+            weapon.quantity = 8;
             break;
         case WEAPON_ARROW:
             strcpy(weapon.name, "Arrow");
-            weapon.damage = 8;
+            weapon.damage = 5;
             weapon.type = RANGED;
-            weapon.quantity = 50;
+            weapon.quantity = 20;
             break;
         case WEAPON_SWORD:
             strcpy(weapon.name, "Sword");
-            weapon.damage = 18;
+            weapon.damage = 10;
             weapon.type = MELEE;
             weapon.quantity = 1;
             break;
@@ -2460,16 +2458,15 @@ Weapon create_weapon(char symbol) {
             weapon.type = MELEE;
             weapon.quantity = 1;
     }
-    
+
     return weapon;
 }
 
-void add_weapons(struct Map* map) {
+void add_weapons(struct Map* map, Player* player) {
     const int WEAPON_COUNT = 10; // Adjust as needed
     int weapons_placed = 0;
     char weapon_symbols[] = {WEAPON_DAGGER, WEAPON_MAGIC_WAND, WEAPON_ARROW, WEAPON_SWORD};
-    int num_weapon_types = sizeof(weapon_symbols) / sizeof(weapon_symbols[0]) - 1; //WEAPON_MACE cannot be placed in map
-
+    int num_weapon_types = sizeof(weapon_symbols) / sizeof(weapon_symbols[0]);
 
     while (weapons_placed < WEAPON_COUNT) {
         int x = rand() % MAP_WIDTH;
@@ -2485,41 +2482,28 @@ void add_weapons(struct Map* map) {
         }
 
         if (inside_room && map->grid[y][x] == FLOOR) {
-            // Randomly select a weapon type
             char weapon_symbol = weapon_symbols[rand() % num_weapon_types];
+
+            // Ensure player can only own one sword
+            if (weapon_symbol == WEAPON_SWORD) {
+                bool sword_owned = false;
+                for (int i = 0; i < player->weapon_count; i++) {
+                    if (player->weapons[i].symbol == WEAPON_SWORD) {
+                        sword_owned = true;
+                        break;
+                    }
+                }
+
+                if (sword_owned) {
+                    continue; // Skip placing another sword if already owned
+                }
+            }
+
             map->grid[y][x] = weapon_symbol;
             weapons_placed++;
         }
     }
 }
-
-void handle_weapon_pickup(Player* player, struct Map* map, struct Point new_location, struct MessageQueue* message_queue) {
-    char tile = map->grid[new_location.y][new_location.x];
-    
-    // Check if the tile is a weapon
-    if (tile == WEAPON_MACE || tile == WEAPON_DAGGER || tile == WEAPON_MAGIC_WAND ||
-        tile == WEAPON_ARROW || tile == WEAPON_SWORD) {
-        
-        if (player->weapon_count >= MAX_WEAPONS) {
-            add_game_message(message_queue, "Your weapon inventory is full!", 7); //at the time 7 is the color red
-            return;
-        }
-
-        // Create the weapon based on the symbol
-        Weapon picked_weapon = create_weapon(tile);
-        player->weapons[player->weapon_count++] = picked_weapon;
-
-        // Remove the weapon from the map
-        map->grid[new_location.y][new_location.x] = FLOOR;
-
-        // Notify the player
-        char message[100];
-        snprintf(message, sizeof(message), "You picked up a %s!", picked_weapon.name);
-        add_game_message(message_queue, message, 2); //at the time 2 is the color green
-    }
-}
-
-
 
 const char* symbol_to_name(char symbol) {
     switch(symbol) {
@@ -2564,37 +2548,48 @@ void open_weapon_inventory_menu(Player* player, struct Map* map, struct MessageQ
 
         // Display Melee Weapons
         mvprintw(2, 0, "Melee Weapons:");
-        bool has_melee = false;
-        for (int i = 0; i < player->weapon_count; i++) {
-            if (player->weapons[i].type == MELEE) {
-                has_melee = true;
-                mvprintw(3 + i, 2, "%s (Owned)", player->weapons[i].name);
+        char* melee_weapons[] = {"Mace", "Sword"};
+        char melee_symbols[] = {WEAPON_MACE, WEAPON_SWORD};
+        int melee_damages[] = {15, 18};
+        for (int i = 0; i < 2; i++) {
+            bool owned = false;
+            bool equipped = false;
+            for (int j = 0; j < player->weapon_count; j++) {
+                if (player->weapons[j].symbol == melee_symbols[i]) {
+                    owned = true;
+                    if (player->equipped_weapon == j) equipped = true;
+                    break;
+                }
             }
-        }
-        if (!has_melee) {
-            mvprintw(3, 2, "No melee weapons.");
+            mvprintw(3 + i, 2, "%s: %s%s (Damage: %d)", 
+                     melee_weapons[i],
+                     owned ? "Owned" : "Not Owned",
+                     equipped ? " (Equipped)" : "",
+                     melee_damages[i]);
         }
 
         // Display Ranged Weapons
-        mvprintw(5 + player->weapon_count, 0, "Ranged Weapons:");
-        bool has_ranged = false;
-        for (int i = 0; i < player->weapon_count; i++) {
-            if (player->weapons[i].type == RANGED) {
-                has_ranged = true;
-                mvprintw(6 + i, 2, "%s (Count: %d)", player->weapons[i].name, player->weapons[i].quantity);
+        mvprintw(6, 0, "Ranged Weapons:");
+        char* ranged_weapons[] = {"Dagger", "Magic Wand", "Arrow"};
+        char ranged_symbols[] = {WEAPON_DAGGER, WEAPON_MAGIC_WAND, WEAPON_ARROW};
+        int ranged_damages[] = {10, 20, 8};
+        for (int i = 0; i < 3; i++) {
+            int count = 0;
+            for (int j = 0; j < player->weapon_count; j++) {
+                if (player->weapons[j].symbol == ranged_symbols[i]) {
+                    count = player->weapons[j].quantity;
+                    break;
+                }
             }
-        }
-        if (!has_ranged) {
-            mvprintw(6, 2, "No ranged weapons.");
+            mvprintw(7 + i, 2, "%s: Count: %d (Damage: %d)", ranged_weapons[i], count, ranged_damages[i]);
         }
 
         // Display menu options
-        int offset = 8 + player->weapon_count;
-        mvprintw(offset, 0, "Options:");
-        mvprintw(offset + 1, 2, "e <weapon_name> - Equip weapon");
-        mvprintw(offset + 2, 2, "u             - Use equipped weapon");
-        mvprintw(offset + 3, 2, "d <weapon_name> - Drop weapon");
-        mvprintw(offset + 4, 2, "q             - Quit weapon inventory");
+        mvprintw(10, 0, "Options:");
+        mvprintw(11, 2, "e <weapon_name> - Equip weapon");
+        mvprintw(12, 2, "u             - Use equipped weapon");
+        mvprintw(13, 2, "d <weapon_name> - Drop weapon");
+        mvprintw(14, 2, "q             - Quit weapon inventory");
         refresh();
 
         // Handle input
@@ -2652,18 +2647,14 @@ void open_weapon_inventory_menu(Player* player, struct Map* map, struct MessageQ
                 bool found = false;
                 for (int i = 0; i < player->weapon_count; i++) {
                     if (strcasecmp(player->weapons[i].name, weapon_name) == 0) {
-                        // Drop logic based on weapon type
                         struct Point drop_location = player->location;
                         char current_tile = map->grid[drop_location.y][drop_location.x];
 
                         if (current_tile == FLOOR) {
-                            // Place the weapon symbol on the map
                             if (player->weapons[i].type == RANGED) {
-                                // Only decrease quantity for ranged weapons
                                 if (player->weapons[i].quantity > 0) {
                                     player->weapons[i].quantity--;
                                     if (player->weapons[i].quantity == 0) {
-                                        // Remove the weapon from inventory
                                         for (int j = i; j < player->weapon_count - 1; j++) {
                                             player->weapons[j] = player->weapons[j + 1];
                                         }
@@ -2678,13 +2669,10 @@ void open_weapon_inventory_menu(Player* player, struct Map* map, struct MessageQ
                                     add_game_message(message_queue, msg, 2); // Green color
                                 }
                             } else {
-                                // For melee weapons, indicate possession
-                                // Since count isn't important, simply remove it if dropping
                                 map->grid[drop_location.y][drop_location.x] = FLOOR;
                                 char msg[100];
                                 snprintf(msg, sizeof(msg), "Dropped %s.", player->weapons[i].name);
                                 add_game_message(message_queue, msg, 2); // Green color
-                                // Remove the weapon from inventory
                                 for (int j = i; j < player->weapon_count - 1; j++) {
                                     player->weapons[j] = player->weapons[j + 1];
                                 }
@@ -2715,8 +2703,62 @@ void open_weapon_inventory_menu(Player* player, struct Map* map, struct MessageQ
                 break;
         }
     }
-}
+} 
 
+// Update weapon pickup logic to increment counts appropriately
+void handle_weapon_pickup(Player* player, struct Map* map, struct Point new_location, struct MessageQueue* message_queue) {
+    char tile = map->grid[new_location.y][new_location.x];
+
+    if (tile == WEAPON_MACE || tile == WEAPON_DAGGER || tile == WEAPON_MAGIC_WAND ||
+        tile == WEAPON_ARROW || tile == WEAPON_SWORD) {
+
+        Weapon* existing_weapon = NULL;
+        for (int i = 0; i < player->weapon_count; i++) {
+            if (player->weapons[i].symbol == tile) {
+                existing_weapon = &player->weapons[i];
+                break;
+            }
+        }
+
+        if (tile == WEAPON_SWORD && existing_weapon) {
+            add_game_message(message_queue, "You already own a Sword!", 7); // Red color
+            return;
+        }
+
+        if (!existing_weapon) {
+            if (player->weapon_count >= MAX_WEAPONS) {
+                add_game_message(message_queue, "Your weapon inventory is full!", 7);
+                return;
+            }
+
+            Weapon picked_weapon = create_weapon(tile);
+            player->weapons[player->weapon_count++] = picked_weapon;
+            add_game_message(message_queue, "You picked up a new weapon!", 2);
+        } else {
+            switch (tile) {
+                case WEAPON_DAGGER:
+                    existing_weapon->quantity += 10;
+                    if (existing_weapon->quantity > 50) existing_weapon->quantity = 50;
+                    add_game_message(message_queue, "Picked up 10 Daggers.", 2);
+                    break;
+                case WEAPON_MAGIC_WAND:
+                    existing_weapon->quantity += 8;
+                    if (existing_weapon->quantity > 50) existing_weapon->quantity = 50;
+                    add_game_message(message_queue, "Picked up 8 Magic Wands.", 2);
+                    break;
+                case WEAPON_ARROW:
+                    existing_weapon->quantity += 20;
+                    if (existing_weapon->quantity > 50) existing_weapon->quantity = 50;
+                    add_game_message(message_queue, "Picked up 20 Arrows.", 2);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        map->grid[new_location.y][new_location.x] = FLOOR;
+    }
+}
 
 bool is_melee_weapon(Weapon weapon) {
     // Return true if weapon is melee, false if ranged
@@ -3337,96 +3379,12 @@ void deal_damage_to_enemy(struct Map* map, int x, int y, int damage, struct Mess
 
 // Function to throw a dagger
 void throw_dagger(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue) {
-    // Prompt user for direction
-    clear();
-    mvprintw(0, 0, "Throw Dagger in which direction? (w/a/s/d): ");
-    refresh();
-
-    int direction = getch();
-    int dx = 0, dy = 0;
-
-    switch (tolower(direction)) {
-        case 'w': dy = -1; break; // Up
-        case 's': dy = 1; break;  // Down
-        case 'a': dx = -1; break; // Left
-        case 'd': dx = 1; break;  // Right
-        default:
-            add_game_message(message_queue, "Invalid direction!", 7); // Red color
-            return;
-    }
-
-    int new_x = player->location.x;
-    int new_y = player->location.y;
-
-    for (int i = 0; i < 5; i++) { // Dagger travels 5 tiles
-        new_x += dx;
-        new_y += dy;
-
-        if (!is_valid_tile(new_x, new_y)) break;
-
-        char target_tile = map->grid[new_y][new_x];
-
-        if (target_tile == WALL_HORIZONTAL || target_tile == WALL_VERTICAL) {
-            // Dagger hits a wall and stops
-            break;
-        }
-
-        // Check if the tile has an enemy
-        deal_damage_to_enemy(map, new_x, new_y, weapon->damage, message_queue);
-    }
-
-    // Decrease dagger count
-    weapon->quantity -= 1;
-    if (weapon->quantity < 0) weapon->quantity = 0;
-
-    add_game_message(message_queue, "You threw a Dagger.", 2); // Green color
+    throw_ranged_weapon(player, weapon, map, message_queue, 5, false);
 }
 
 // Function to throw a magic wand (stun enemy)
 void throw_magic_wand(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue) {
-    // Prompt user for direction
-    clear();
-    mvprintw(0, 0, "Throw Magic Wand in which direction? (w/a/s/d): ");
-    refresh();
-
-    int direction = getch();
-    int dx = 0, dy = 0;
-
-    switch (tolower(direction)) {
-        case 'w': dy = -1; break; // Up
-        case 's': dy = 1; break;  // Down
-        case 'a': dx = -1; break; // Left
-        case 'd': dx = 1; break;  // Right
-        default:
-            add_game_message(message_queue, "Invalid direction!", 7); // Red color
-            return;
-    }
-
-    int new_x = player->location.x;
-    int new_y = player->location.y;
-
-    for (int i = 0; i < 10; i++) { // Magic Wand travels 10 tiles
-        new_x += dx;
-        new_y += dy;
-
-        if (!is_valid_tile(new_x, new_y)) break;
-
-        char target_tile = map->grid[new_y][new_x];
-
-        if (target_tile == WALL_HORIZONTAL || target_tile == WALL_VERTICAL) {
-            // Magic Wand hits a wall and stops
-            break;
-        }
-
-        // Check if the tile has an enemy
-        stun_enemy(map, new_x, new_y, weapon->damage, message_queue);
-    }
-
-    // Decrease magic wand count
-    weapon->quantity -= 1;
-    if (weapon->quantity < 0) weapon->quantity = 0;
-
-    add_game_message(message_queue, "You threw a Magic Wand.", 2); // Green color
+    throw_ranged_weapon(player, weapon, map, message_queue, 10, true);
 }
 
 // Function to stun an enemy
@@ -3443,28 +3401,31 @@ void stun_enemy(struct Map* map, int x, int y, int damage, struct MessageQueue* 
 
 // Function to throw arrows (similar to dagger)
 void throw_arrow(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue) {
-    // Prompt user for direction
+    throw_ranged_weapon(player, weapon, map, message_queue, 5, false);
+}
+
+void throw_ranged_weapon(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue, int range, bool stun) {
     clear();
-    mvprintw(0, 0, "Throw Arrow in which direction? (w/a/s/d): ");
+    mvprintw(0, 0, "Throw %s in which direction? (w/a/s/d): ", weapon->name);
     refresh();
 
     int direction = getch();
     int dx = 0, dy = 0;
 
     switch (tolower(direction)) {
-        case 'w': dy = -1; break; // Up
-        case 's': dy = 1; break;  // Down
-        case 'a': dx = -1; break; // Left
-        case 'd': dx = 1; break;  // Right
+        case 'w': dy = -1; break;
+        case 's': dy = 1; break;
+        case 'a': dx = -1; break;
+        case 'd': dx = 1; break;
         default:
-            add_game_message(message_queue, "Invalid direction!", 7); // Red color
+            add_game_message(message_queue, "Invalid direction!", 7);
             return;
     }
 
     int new_x = player->location.x;
     int new_y = player->location.y;
 
-    for (int i = 0; i < 5; i++) { // Arrow travels 5 tiles
+    for (int i = 0; i < range; i++) {
         new_x += dx;
         new_y += dy;
 
@@ -3473,35 +3434,38 @@ void throw_arrow(Player* player, Weapon* weapon, struct Map* map, struct Message
         char target_tile = map->grid[new_y][new_x];
 
         if (target_tile == WALL_HORIZONTAL || target_tile == WALL_VERTICAL) {
-            // Arrow hits a wall and stops
             break;
         }
 
-        // Check if the tile has an enemy
-        deal_damage_to_enemy(map, new_x, new_y, weapon->damage, message_queue);
+        if (stun) {
+            stun_enemy(map, new_x, new_y, weapon->damage, message_queue);
+        } else {
+            deal_damage_to_enemy(map, new_x, new_y, weapon->damage, message_queue);
+        }
     }
 
-    // Decrease arrow count
     weapon->quantity -= 1;
     if (weapon->quantity < 0) weapon->quantity = 0;
 
-    add_game_message(message_queue, "You threw an Arrow.", 2); // Green color
+    char msg[100];
+    snprintf(msg, sizeof(msg), "You threw a %s.", weapon->name);
+    add_game_message(message_queue, msg, 2);
 }
+
 
 void use_weapon(Player* player, struct Map* map, struct MessageQueue* message_queue) {
     if (player->equipped_weapon == -1) {
-        mvprintw(16, 80, "No weapon equipped!");
-        refresh();
-        getch();
+        add_game_message(message_queue, "No weapon equipped!", 7);
         return;
     }
 
     Weapon* weapon = &player->weapons[player->equipped_weapon];
     switch (weapon->symbol) {
         case WEAPON_MACE:
-            // Damage to adjacent tiles
+        case WEAPON_SWORD:
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dy = -1; dy <= 1; dy++) {
+                    if (dx == 0 && dy == 0) continue;
                     int target_x = player->location.x + dx;
                     int target_y = player->location.y + dy;
                     if (is_valid_tile(target_x, target_y)) {
@@ -3509,42 +3473,23 @@ void use_weapon(Player* player, struct Map* map, struct MessageQueue* message_qu
                     }
                 }
             }
-            add_game_message(message_queue, "You used the Mace!", 2); // Green color
+            add_game_message(message_queue, weapon->symbol == WEAPON_MACE ? "You swung the Mace!" : "You swung the Sword!", 2);
             break;
 
         case WEAPON_DAGGER:
-            // Thrown in a direction, travels 5 tiles
             throw_dagger(player, weapon, map, message_queue);
             break;
 
         case WEAPON_MAGIC_WAND:
-            // Thrown in a direction, travels 10 tiles, stuns enemies
             throw_magic_wand(player, weapon, map, message_queue);
             break;
 
         case WEAPON_ARROW:
-            // Thrown in a direction, travels 5 tiles
             throw_arrow(player, weapon, map, message_queue);
             break;
 
-        case WEAPON_SWORD:
-            // Damage to adjacent tiles
-            for (int dx = -1; dx <= 1; dx++) {
-                for (int dy = -1; dy <= 1; dy++) {
-                    int target_x = player->location.x + dx;
-                    int target_y = player->location.y + dy;
-                    if (is_valid_tile(target_x, target_y)) {
-                        deal_damage_to_enemy(map, target_x, target_y, weapon->damage, message_queue);
-                    }
-                }
-            }
-            add_game_message(message_queue, "You swung the Sword!", 2); // Green color
-            break;
-
         default:
-            mvprintw(16, 80, "Unknown weapon type!");
-            refresh();
-            getch();
+            add_game_message(message_queue, "Unknown weapon type!", 7);
             break;
     }
 }

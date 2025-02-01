@@ -383,7 +383,7 @@ void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct
 struct Map generate_map(struct Room* previous_room, int current_level, int max_level) ;
 
 // Function declarations for weapons
-void add_weapons(struct Map* map);
+void add_weapons(struct Map* map, Player* player);
 void handle_weapon_pickup(Player* player, struct Map* map, struct Point new_location, struct MessageQueue* message_queue);
 void open_weapon_inventory_menu(Player* player, struct Map* map, struct MessageQueue* message_queue);
 const char* symbol_to_name(char symbol);
@@ -413,6 +413,7 @@ void combat(Player* player, Enemy* enemy, struct Map* map, int* hitpoints);
 void throw_arrow(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue);
 void stun_enemy(struct Map* map, int x, int y, int damage, struct MessageQueue* message_queue);
 void throw_magic_wand(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue);
+void throw_ranged_weapon(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue, int range, bool stun);
 void throw_dagger(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* message_queue);
 void deal_damage_to_enemy(struct Map* map, int x, int y, int damage, struct MessageQueue* message_queue);
 bool is_valid_tile(int x, int y);
