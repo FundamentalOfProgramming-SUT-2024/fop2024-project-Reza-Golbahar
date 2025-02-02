@@ -27,9 +27,9 @@ int ancient_key_count = 0;
 int broken_key_count = 0;
 
 // Initialize a player structure (Modify existing player initialization if necessary)
-void initialize_player(Player* player, struct Point start_location) {
+void initialize_player(struct UserManager* manager, Player* player, struct Point start_location) {
     player->location = start_location;
-    player->hitpoints = 100;
+    player->hitpoints = 210 - (manager->current_user->difficulty * 10);
     player->hunger_rate = 0;
     player->score = 0;
     player->weapon_count = 1;
@@ -54,7 +54,7 @@ void initialize_player(Player* player, struct Point start_location) {
 
 void play_game(struct UserManager* manager, struct Map* game_map, 
                Player* player, int initial_score) {
-    const int max_level = 4;  // Define maximum levels
+    const int max_level = 5;  // Define maximum levels
     int current_level = 1;    // Start at level 1
     bool game_running = true;
 
@@ -161,7 +161,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         static time_t last_item_add_time = 0;
         if (difftime(time(NULL), last_item_add_time) >= 30.0) {
             add_food(game_map, player);
-            add_gold(game_map, player);
+            //add_gold(game_map, player);
             last_item_add_time = time(NULL);
         }
         update_temporary_effects(player, game_map, &message_queue);
@@ -218,7 +218,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                         }
 
                         // Generate the next map with current_level and max_level
-                        struct Map new_map = generate_map(current_room, current_level, max_level);
+                        struct Map new_map = generate_map(manager, current_room, current_level, max_level);
                         *game_map = new_map;
 
                         add_game_message(&message_queue, "Level up! Welcome to Level.", 3); // COLOR_PAIR_WEAPONS
@@ -229,7 +229,8 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                         // Reset player stats or adjust as needed
                     } else {
                         // Final level completion (Treasure Room reached)
-                        add_game_message(&message_queue, "Congratulations! You've completed all levels.", 2); // COLOR_PAIR_UNLOCKED_DOOR
+                        finalize_victory(manager, player);
+                        //add_game_message(&message_queue, "Congratulations! You've completed all levels.", 2); // COLOR_PAIR_UNLOCKED_DOOR
                         game_running = false;
                     }
                 } else if (tile == FOOD_NORMAL_SYM || tile == FOOD_GREAT_SYM || 
@@ -518,9 +519,50 @@ void print_full_map(struct Map* game_map, struct Point* character_location, stru
     }
 }
 
-struct Map generate_map(struct Room* previous_room, int current_level, int max_level) {
+struct Map generate_map(struct UserManager* manager, struct Room* previous_room, int current_level, int max_level) {
     struct Map map;
     init_map(&map);
+
+    if (current_level == 5) {
+        Room big;
+        big.left_wall   = 1;
+        big.right_wall  = MAP_WIDTH  - 2;
+        big.top_wall    = 1;
+        big.bottom_wall = MAP_HEIGHT - 2;
+        big.width  = big.right_wall  - big.left_wall;
+        big.height = big.bottom_wall - big.top_wall;
+        big.theme  = THEME_TREASURE;
+        big.door_count = 0;
+        big.has_stairs = false;  // No stairs needed
+        big.visited    = true;
+
+        map.rooms[0] = big;
+        map.room_count = 1;
+        
+        // Draw the big room
+        place_room(&map, &map.rooms[0]);
+
+        // Add items for the final treasure area:
+        // e.g. lots of enemies, gold, spells
+        add_enemies(&map, 5);  // e.g. “level 5” => more or bigger enemies
+        add_gold_to_room(&map, &map.rooms[0], 50);
+        add_spells_to_room(&map, &map.rooms[0], 30);
+
+        // Place an initial_position somewhere in the room
+        map.initial_position.x = (big.left_wall + big.right_wall) / 2;
+        map.initial_position.y = (big.top_wall  + big.bottom_wall) / 2;
+        
+        return map;
+    }
+
+
+    if (current_level == 4) {
+        // Pick any normal room (or the last room) to hold the chest
+        Room* chest_room = &map.rooms[ map.room_count - 1 ];
+        int chest_x = chest_room->left_wall + 2;
+        int chest_y = chest_room->top_wall + 2;
+        map.grid[chest_y][chest_x] = TREASURE_CHEST_SYM;  // e.g. 'C'
+    }
 
     // Determine the number of rooms based on the level or other criteria
     int num_rooms = MIN_ROOM_COUNT + rand() % (MAX_ROOMS - MIN_ROOM_COUNT + 1);
@@ -579,27 +621,24 @@ struct Map generate_map(struct Room* previous_room, int current_level, int max_l
     // Connect rooms with corridors
     connect_rooms_with_corridors(&map);
 
-    // Place secret doors (if applicable)
-    place_secret_doors(&map);
+    convert_deadend_to_enchant(&map); 
 
-        // Initialize player attributes
+    // Initialize player attributes
     Player player;
-    initialize_player(&player, map.initial_position);
+    initialize_player(manager, &player, map.initial_position);
 
     add_food(&map, &player);
-    add_gold(&map, &player);
+    //add_gold(&map, &player);
     add_weapons(&map, &player);
 
     // Spawn items and features
-    add_traps(&map);
-    add_spells(&map);
+    //add_traps(&map);
+    //add_spells(&map);
 
     // Place the single Ancient Key
     add_ancient_key(&map);
 
     // Place stairs (if applicable)
-    place_stairs(&map);
-
     add_enemies(&map, current_level);
 
     // Set initial player position for the first map
@@ -608,83 +647,137 @@ struct Map generate_map(struct Room* previous_room, int current_level, int max_l
         map.initial_position.y = map.rooms[0].top_wall + map.rooms[0].height / 2;
     }
 
+    place_stairs(&map);
+
     return map;
 }
 
-void place_secret_doors(struct Map* map) {
+void convert_deadend_to_enchant(struct Map* map) {
+    // 1) Find a dead-end room (only 1 door)
     for (int i = 0; i < map->room_count; i++) {
-        struct Room* room = &map->rooms[i];
-        
-        // Check if this room is a 'dead-end' (exactly 1 door).
+        Room* room = &map->rooms[i];
         if (room->door_count == 1) {
-            // Try placing one secret door on a random wall tile
-            // (similar to how you place normal doors).
-            bool placed_secret = false;
-            int attempts = 0;
+            // Found a "dead-end" room
+            room->theme = THEME_ENCHANT; // Mark this as enchant room
+            
+            // 2) Get that single door coordinate
+            int door_x = room->doors[0].x;
+            int door_y = room->doors[0].y;
+            
+            // Make sure it's within bounds
+            if (door_x < 0 || door_x >= MAP_WIDTH ||
+                door_y < 0 || door_y >= MAP_HEIGHT) 
+            {
+                continue; // skip if invalid
+            }
 
-            while (!placed_secret && attempts < 50) {
-                attempts++;
-                int wall = rand() % 4;  // 0: top, 1: bottom, 2: left, 3: right
-                int x = 0, y = 0;
+            // 3) Convert that tile to a SECRET_DOOR_CLOSED
+            if (map->grid[door_y][door_x] == DOOR ||
+                map->grid[door_y][door_x] == DOOR_PASSWORD)
+            {
+                map->grid[door_y][door_x] = SECRET_DOOR_CLOSED;
+            }
+            
+            // 4) Also convert the door on the other side of the corridor
+            //    if it exists as a distinct tile.
+            // 
+            //    Typically, your corridor is 1 tile wide, 
+            //    so let's check the adjacent corridor tile(s)
+            //    in each of the 4 directions. Whichever 
+            //    is the "corridor," we can see if there's
+            //    a door boundary belonging to the other room.
 
-                switch (wall) {
-                    case 0: // top
-                        x = room->left_wall + 1 + rand() % (room->width - 2);
-                        y = room->top_wall;
-                        break;
-                    case 1: // bottom
-                        x = room->left_wall + 1 + rand() % (room->width - 2);
-                        y = room->bottom_wall;
-                        break;
-                    case 2: // left
-                        x = room->left_wall;
-                        y = room->top_wall + 1 + rand() % (room->height - 2);
-                        break;
-                    case 3: // right
-                        x = room->right_wall;
-                        y = room->top_wall + 1 + rand() % (room->height - 2);
-                        break;
+            static int dirs[4][2] = {
+                {0, -1}, // up
+                {0,  1}, // down
+                {-1, 0}, // left
+                { 1, 0}  // right
+            };
+            
+            for (int d = 0; d < 4; d++) {
+                int nx = door_x + dirs[d][0];
+                int ny = door_y + dirs[d][1];
+                if (nx < 0 || nx >= MAP_WIDTH ||
+                    ny < 0 || ny >= MAP_HEIGHT) {
+                    continue;
                 }
-
-                // Only place if currently a wall
-                if (map->grid[y][x] == WALL_HORIZONTAL || 
-                    map->grid[y][x] == WALL_VERTICAL) {
-
-                    // Set the tile to a hidden secret door
-                    map->grid[y][x] = SECRET_DOOR_CLOSED;
-                    placed_secret = true;
+                // If that tile is also a door => also convert it
+                // (You only do this if your corridor logic 
+                //  places 2 door tiles, one in each room.)
+                if (map->grid[ny][nx] == DOOR ||
+                    map->grid[ny][nx] == DOOR_PASSWORD)
+                {
+                    map->grid[ny][nx] = SECRET_DOOR_CLOSED;
+                    break; // after converting once, we can break
                 }
+            }
+            
+            // If you only want to do this for ONE dead-end room,
+            // add a break here to stop after the first one
+            break;
+        }
+    }
+}
+
+void add_items_to_room(struct Map* map, struct Room* room) {
+    switch (room->theme) {
+        case THEME_TREASURE:
+            // This room is special -> lots of traps, lots of gold, maybe no spells or limited
+            add_traps_to_room(map, room, 8);    // Example: 8 traps
+            add_gold_to_room(map, room, 10);    // e.g. 10 piles of gold
+            // place a special 'end tile' in a corner if you want, or you can place it 
+            // later if you only want 1 tile per entire treasure room
+            break;
+
+        case THEME_ENCHANT:
+            // Only spells, no enemies, maybe a couple traps or none
+            add_spells_to_room(map, room, 6);   // e.g. more spells
+            // Possibly add 0 traps or just 1
+            // add_traps_to_room(map, room, 0);
+
+            // No gold? Or very little
+            add_gold_to_room(map, room, 0);
+            break;
+
+        case THEME_NORMAL:
+        default:
+            // A balanced distribution
+            add_traps_to_room(map, room, 2);
+            add_gold_to_room(map, room, 3);
+            add_spells_to_room(map, room, 1);
+            // If you want to also place weapons or food:
+            // add_weapons_to_room(map, room, 2);
+            // add_food_to_room(map, room, 1);
+            break;
+    }
+}
+
+
+/// Place a certain number of traps in a single room
+void add_traps_to_room(struct Map* map, struct Room* room, int trap_count) {
+    for (int i = 0; i < trap_count; i++) {
+        bool placed = false;
+        for (int attempt = 0; attempt < 50 && !placed; attempt++) {
+            int x = room->left_wall + 1 + rand() % (room->width  - 1);
+            int y = room->top_wall  + 1 + rand() % (room->height - 1);
+
+            if (map->grid[y][x] == FLOOR) {
+                // Place a hidden trap
+                map->traps[map->trap_count].location.x = x;
+                map->traps[map->trap_count].location.y = y;
+                map->traps[map->trap_count].triggered   = false;
+                map->trap_count++;
+
+                // Keep the tile as FLOOR (invisible trap), 
+                // or optionally mark it with something if you want it shown
+                // map->grid[y][x] = '^'; 
+
+                placed = true;
             }
         }
     }
 }
 
-void add_traps(struct Map* game_map) {
-    const int TRAP_COUNT = 10; // Number of traps to add
-    int traps_placed = 0;
-
-    while (traps_placed < TRAP_COUNT) {
-        int x = rand() % MAP_WIDTH;
-        int y = rand() % MAP_HEIGHT;
-
-        // Place traps only on floor tiles within rooms
-        bool inside_room = false;
-        for (int i = 0; i < game_map->room_count; i++) {
-            if (isPointInRoom(&(struct Point){x, y}, &game_map->rooms[i])) {
-                inside_room = true;
-                break;
-            }
-        }
-
-        if (inside_room && game_map->grid[y][x] == FLOOR) {
-            game_map->grid[y][x] = FLOOR; // Initially display as a normal floor
-            game_map->traps[traps_placed].location = (struct Point){x, y};
-            game_map->traps[traps_placed].triggered = false;
-            traps_placed++;
-            game_map->trap_count = traps_placed;
-        }
-    }
-}
 
 // void open_inventory_menu(Player* player, struct MessageQueue* message_queue){
 //     bool menu_open = true;
@@ -1673,6 +1766,23 @@ void move_character(Player* player, int key, struct Map* game_map, int* hitpoint
     }
 }
 
+void finalize_victory(struct UserManager* manager, Player* player) {
+    // Update scoreboard info (score, gold, etc.)
+    if (manager->current_user) {
+        manager->current_user->score += player->score; 
+        manager->current_user->gold  += player->gold_count;
+        save_users_to_json(manager);
+    }
+
+    // Print a "You have won" message
+    clear();
+    mvprintw(0, 0, "Congratulations! You have defeated the Treasure Room!");
+    mvprintw(2, 0, "Your final score and gold are saved.");
+    mvprintw(4, 0, "Press any key to continue...");
+    refresh();
+    getch();
+}
+
 bool prompt_for_password_door(Room* door_room) {
     // door_room->door_code contains the correct 4-digit code
     // The player has up to 3 attempts
@@ -1828,57 +1938,34 @@ void init_map(struct Map* map) {
     map->last_attack_time = time(NULL);
 }
 
-void add_gold(struct Map* map, Player* player) {
-    if (player->gold_count >= MAX_GOLDS) return; // Prevent overflow
+/// Place a certain number of gold piles in a single room
+void add_gold_to_room(struct Map* map, struct Room* room, int gold_count) {
+    for (int i = 0; i < gold_count; i++) {
+        // Attempt to place gold up to 50 times
+        bool placed = false;
+        for (int attempt = 0; attempt < 50 && !placed; attempt++) {
+            int x = room->left_wall + 1 + rand() % (room->width  - 1);
+            int y = room->top_wall  + 1 + rand() % (room->height - 1);
 
-    // Randomly decide the type of gold to add
-    GoldType type = GOLD_NORMAL;
-    int rand_val = rand() % 100;
-    if (rand_val < 90) {
-        type = GOLD_NORMAL;
-    } else {
-        type = GOLD_BLACK;
-    }
+            if (map->grid[y][x] == FLOOR) {
+                // Choose gold type
+                GoldType type = (rand() % 100 < 90) ? GOLD_NORMAL : GOLD_BLACK;
 
-    // Find a random empty tile to place the gold
-    int x, y;
-    bool placed = false;
-    for (int i = 0; i < 100; i++) { // Try 100 times
-        x = rand() % MAP_WIDTH;
-        y = rand() % MAP_HEIGHT;
-        if (map->grid[y][x] == FLOOR) {
-            // Place gold
-            map->golds[map->gold_count].type = type;
-            map->golds[map->gold_count].position.x = x;
-            map->golds[map->gold_count].position.y = y;
-            map->golds[map->gold_count].collected = false;
+                // Mark on the map
+                map->grid[y][x] = (type == GOLD_NORMAL) ? GOLD_NORMAL_SYM : GOLD_BLACK_SYM;
 
-            // Assign symbol based on gold type
-            switch(type) {
-                case GOLD_NORMAL:
-                    map->grid[y][x] = GOLD_NORMAL_SYM;
-                    break;
-                case GOLD_BLACK:
-                    map->grid[y][x] = GOLD_BLACK_SYM;
-                    break;
-                default:
-                    map->grid[y][x] = GOLD_NORMAL_SYM;
-                    break;
+                // Add to map's gold array
+                if (map->gold_count < MAX_GOLDS) {
+                    map->golds[map->gold_count].type = type;
+                    map->golds[map->gold_count].position.x = x;
+                    map->golds[map->gold_count].position.y = y;
+                    map->golds[map->gold_count].collected = false;
+                    map->gold_count++;
+                }
+
+                placed = true;
             }
-
-            int gold_amount = (type == GOLD_NORMAL) ? (rand() % 100 + 1) : ((rand() % 100 + 1) * 2);
-            player->gold_count += gold_amount;
-
-            map->gold_count++;
-            placed = true;
-            break;
         }
-    }
-
-    if (!placed) {
-        // Could not place gold after 100 attempts
-        // Optionally, handle this scenario
-        printf("Warning: Failed to place gold after 100 attempts.\n");
     }
 }
 
@@ -2068,8 +2155,9 @@ void place_room(struct Map* map, struct Room* room) {
         int center_y = (room->top_wall + room->bottom_wall) / 2;
         map->grid[center_y][center_x] = TREASURE_CHEST_SYM; // Define TREASURE_CHEST, e.g., '#'
     }
-}
 
+    add_items_to_room(map, room);
+}
 
 void update_visibility(struct Map* game_map, struct Point* player_pos, bool visible[MAP_HEIGHT][MAP_WIDTH]) {
     const int CORRIDOR_SIGHT = 5; // Sight range in corridors
@@ -2647,30 +2735,23 @@ Spell create_spell(char symbol) {
     return spell;
 }
 
-void add_spells(struct Map* game_map) {
-    const int SPELL_COUNT = 5; // Adjust as needed
-    int spells_placed = 0;
+/// Place a certain number of spells in a single room
+void add_spells_to_room(struct Map* map, struct Room* room, int spell_count) {
+    // Possible spell symbols
     char spell_symbols[] = {SPELL_HEALTH, SPELL_SPEED, SPELL_DAMAGE};
-    int num_spell_types = sizeof(spell_symbols) / sizeof(spell_symbols[0]);
+    int spell_types = sizeof(spell_symbols) / sizeof(spell_symbols[0]);
 
-    while (spells_placed < SPELL_COUNT) {
-        int x = rand() % MAP_WIDTH;
-        int y = rand() % MAP_HEIGHT;
+    for (int i = 0; i < spell_count; i++) {
+        bool placed = false;
+        for (int attempt = 0; attempt < 50 && !placed; attempt++) {
+            int x = room->left_wall + 1 + rand() % (room->width  - 1);
+            int y = room->top_wall  + 1 + rand() % (room->height - 1);
 
-        // Place spells only on floor tiles within rooms and ensure no overlap with existing items
-        bool inside_room = false;
-        for (int i = 0; i < game_map->room_count; i++) {
-            if (isPointInRoom(&(struct Point){x, y}, &game_map->rooms[i])) {
-                inside_room = true;
-                break;
+            if (map->grid[y][x] == FLOOR) {
+                char symbol = spell_symbols[rand() % spell_types];
+                map->grid[y][x] = symbol; // Put the spell in the map
+                placed = true;
             }
-        }
-
-        if (inside_room && game_map->grid[y][x] == FLOOR) {
-            // Randomly select a spell type
-            char spell_symbol = spell_symbols[rand() % num_spell_types];
-            game_map->grid[y][x] = spell_symbol;
-            spells_placed++;
         }
     }
 }
@@ -2917,14 +2998,19 @@ void use_spell(Player* player, struct Map* game_map, struct MessageQueue* messag
 
 
 void add_enemies(struct Map* map, int current_level) {
-    int enemies_to_add = current_level * 2;
+    int enemies_to_add;
+    
+    if (current_level == 5)
+        enemies_to_add = 20;
+    else
+        enemies_to_add = current_level * 2;
 
     for (int i = 0; i < enemies_to_add && map->enemy_count < MAX_ENEMIES; i++) {
         if (map->room_count == 0) break;
 
         int room_index = rand() % map->room_count;
         Room* room = &map->rooms[room_index];
-        if (room->theme == THEME_TREASURE) continue;
+        if (room->theme == THEME_ENCHANT) continue;
 
         int x = room->left_wall + 1 + rand() % (room->width - 2);
         int y = room->top_wall + 1 + rand() % (room->height - 2);

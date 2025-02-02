@@ -352,7 +352,8 @@ static bool door_unlocked = false;
 void play_game(struct UserManager* manager, struct Map* game_map, 
                Player* player, int initial_score);
 void init_map(struct Map* map);
-void add_traps(struct Map* game_map);
+void add_traps_to_room(struct Map* map, struct Room* room, int trap_count);
+void add_items_to_room(struct Map* map, struct Room* room);
 void print_password_messages(const char* message, int line_offset);
 Room* find_room_by_position(struct Map* map, int x, int y);
 
@@ -364,7 +365,7 @@ void place_stairs(struct Map* map);
 void place_pillars(struct Map* map, struct Room* room);
 void place_windows(struct Map* map, struct Room* room);
 bool prompt_for_password_door(Room* door_room);
-void place_secret_doors(struct Map* map);
+void convert_deadend_to_enchant(struct Map* map);
 void print_full_map(struct Map* game_map, struct Point* character_location, struct UserManager* manager);
 
 // Saving/Loading
@@ -397,7 +398,7 @@ void update_password_display();
 
 // Map display
 void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct Point character_location, struct UserManager* manager);
-struct Map generate_map(struct Room* previous_room, int current_level, int max_level) ;
+struct Map generate_map(struct UserManager* manager, struct Room* previous_room, int current_level, int max_level) ;
 
 // Function declarations for weapons
 void add_weapons(struct Map* map, Player* player);
@@ -415,7 +416,7 @@ void handle_spell_pickup(Player* player, struct Map* map, struct Point new_locat
 void open_spell_inventory_menu(struct Map* game_map, Player* player, struct MessageQueue* message_queue);
 void use_spell(Player* player, struct Map* game_map, struct MessageQueue* message_queue);
 const char* spell_type_to_name(SpellType type);
-void add_spells(struct Map* game_map);
+void add_spells_to_room(struct Map* map, struct Room* room, int spell_count);
 
 // Function Declarations for Enemies
 void add_enemies(struct Map* map, int current_level);
@@ -441,9 +442,9 @@ void update_food_inventory(Player* player, struct MessageQueue* message_queue);
 void open_food_inventory_menu(Player* player, struct MessageQueue* message_queue);
 
 // Function Declarations for Gold
-void add_gold(struct Map* map, Player* player);
+void add_gold_to_room(struct Map* map, struct Room* room, int gold_count);
 void handle_gold_collection(Player* player, struct Map* map, struct MessageQueue* message_queue);
-void initialize_player(Player* player, struct Point start_location);
+void initialize_player(struct UserManager* manager, Player* player, struct Point start_location);
 
 // Hunger and Health Mechanics
 void update_hunger_and_health(Player* player, struct Map* map, struct MessageQueue* message_queue);
@@ -451,5 +452,6 @@ void consume_food(Player* player, int food_index, struct MessageQueue* message_q
 void collect_food(Player* player, struct Map* map, struct MessageQueue* message_queue);
 // Ensure this is in game.c
 void update_temporary_effects(Player* player, struct Map* map, struct MessageQueue* message_queue);
+void finalize_victory(struct UserManager* manager, Player* player);
 
 #endif
