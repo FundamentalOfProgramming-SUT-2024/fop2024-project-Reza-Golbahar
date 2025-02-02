@@ -47,6 +47,7 @@ void initialize_player(struct UserManager* manager, Player* player, struct Point
     player->broken_key_count = 0;
     player->current_score = 0;
     player->current_gold = 0;
+    player->food_count = 0;
 
     // Initialize weapons
     player->weapons[0] = create_weapon(WEAPON_MACE);
@@ -407,8 +408,11 @@ void play_game(struct UserManager* manager, struct Map* game_map,
 void print_full_map(struct Map* game_map, struct Point* character_location, struct UserManager* manager) {
     for (int y = 0; y < MAP_HEIGHT; y++) {
         for (int x = 0; x < MAP_WIDTH; x++) {
+
+            // Determine the tile to print
             char tile = game_map->grid[y][x];
 
+            // Draw the player
             if (character_location->x == x && character_location->y == y) {
                 // Determine the color for the player based on user settings
                 int player_color_pair = 0; // Default color pair (could be defined in your code)
@@ -416,13 +420,13 @@ void print_full_map(struct Map* game_map, struct Point* character_location, stru
                 if (manager->current_user) {
                     // Check the player's chosen color from settings
                     if (strcmp(manager->current_user->character_color, "Red") == 0) {
-                        player_color_pair = COLOR_PAIR_DAMAGE; // Example: Red
+                        player_color_pair = 7; // Assuming color pair 1 is Red
                     } else if (strcmp(manager->current_user->character_color, "Blue") == 0) {
-                        player_color_pair = COLOR_PAIR_SPEED; // Example: Blue
+                        player_color_pair = 9; // Assuming color pair 2 is Blue
                     } else if (strcmp(manager->current_user->character_color, "Green") == 0) {
-                        player_color_pair = COLOR_PAIR_HEALTH; // Example: Green
+                        player_color_pair = 2; // Assuming color pair 3 is Green
                     } else {
-                        player_color_pair = COLOR_PAIR_HEALTH; // Default color
+                        player_color_pair = 20; // Default color is White (pair 4)
                     }
                 }
 
@@ -432,6 +436,7 @@ void print_full_map(struct Map* game_map, struct Point* character_location, stru
                 attroff(COLOR_PAIR(player_color_pair));
                 continue;
             }
+
 
             // Determine room theme
             RoomTheme room_theme = THEME_NORMAL; // Default
@@ -460,79 +465,101 @@ void print_full_map(struct Map* game_map, struct Point* character_location, stru
 
             // Apply color and print based on tile type
             switch(tile) {
-                case TREASURE_CHEST_SYM:
-                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE)); // Treasure Room color
-                    mvaddch(y, x, TREASURE_CHEST_SYM);
-                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE));
+                case 'T':  // Normal Food
+                    attron(COLOR_PAIR(2));
+                    mvaddch(y, x, tile);
+                    attroff(COLOR_PAIR(2));
                     break;
-
-                case FOOD_NORMAL_SYM:
-                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_NORMAL));
-                    mvaddch(y, x, FOOD_NORMAL_SYM);
-                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_NORMAL));
+                case 'A':  // Great Food
+                    attron(COLOR_PAIR(2));
+                    mvaddch(y, x, tile);
+                    attroff(COLOR_PAIR(2));
                     break;
-                case FOOD_GREAT_SYM:
-                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_ENCHANT));
-                    mvaddch(y, x, FOOD_GREAT_SYM);
-                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_ENCHANT));
-                    break;
-                case FOOD_MAGICAL_SYM:
+                case 'M':  // Magical Food
                     attron(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE));
-                    mvaddch(y, x, FOOD_MAGICAL_SYM);
+                    mvaddch(y, x, tile);
                     attroff(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE));
                     break;
-                case FOOD_ROTTEN_SYM:
-                    attron(COLOR_PAIR(COLOR_PAIR_DAMAGE));
-                    mvaddch(y, x, FOOD_ROTTEN_SYM);
-                    attroff(COLOR_PAIR(COLOR_PAIR_DAMAGE));
-                    break;
-
-                case GOLD_NORMAL_SYM:
-                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_NORMAL));
-                    mvaddch(y, x, GOLD_NORMAL_SYM);
-                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_NORMAL));
-                    break;
-                case GOLD_BLACK_SYM:
-                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_ENCHANT));
-                    mvaddch(y, x, GOLD_BLACK_SYM);
-                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_ENCHANT));
-                    break;
-
-                case DOOR_PASSWORD:
-                    {
-                        Room* door_room = find_room_by_position(game_map, x, y);
-                        if (door_room && door_room->password_unlocked) {
-                            // Green for unlocked door
-                            attron(COLOR_PAIR(COLOR_PAIR_HEALTH));
-                            mvaddch(y, x, DOOR_PASSWORD);
-                            attroff(COLOR_PAIR(COLOR_PAIR_HEALTH));
-                        } else {
-                            // Red for locked door
-                            attron(COLOR_PAIR(COLOR_PAIR_DAMAGE));
-                            mvaddch(y, x, DOOR_PASSWORD);
-                            attroff(COLOR_PAIR(COLOR_PAIR_DAMAGE));
-                        }
-                    }
-                    break;
-
-                case ENEMY_FIRE_MONSTER:
-                    attron(COLOR_PAIR(COLOR_PAIR_SPEED)); // Define a new color pair for enemies
-                    mvaddch(y, x, ENEMY_FIRE_MONSTER);
-                    attroff(COLOR_PAIR(COLOR_PAIR_SPEED));
-                    break;
-
-                case TRAP_SYMBOL:
-                    // Red for triggered traps
+                case 'R':  // Rotten Food
                     attron(COLOR_PAIR(COLOR_PAIR_DAMAGE));
                     mvaddch(y, x, tile);
                     attroff(COLOR_PAIR(COLOR_PAIR_DAMAGE));
                     break;
 
+                case '$':  // Normal Gold
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_NORMAL));
+                    mvaddch(y, x, tile);
+                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_NORMAL));
+                    break;
+                case 'B':  // Black Gold
+                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_ENCHANT));
+                    mvaddch(y, x, tile);
+                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_ENCHANT));
+                    break;
+
+
+                // case TREASURE_CHEST:
+                //     attron(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE)); // Use Treasure Room color
+                //     mvaddch(y, x, TREASURE_CHEST);
+                //     attroff(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE));
+                //     break;
+
+
+                    case 'F':
+                        attron(COLOR_PAIR(16));
+                        mvaddch(y, x, 'F');
+                        attroff(COLOR_PAIR(16));
+                        break;
+                    case 'G':
+                        attron(COLOR_PAIR(16));
+                        mvaddch(y, x, 'G');
+                        attroff(COLOR_PAIR(16));
+                        break;
+                    case 'D':
+                        attron(COLOR_PAIR(16));
+                        mvaddch(y, x, 'D');
+                        attroff(COLOR_PAIR(16));
+                        break;
+                    case 'S':
+                        attron(COLOR_PAIR(16));
+                        mvaddch(y, x, 'S');
+                        attroff(COLOR_PAIR(16));
+                        break;
+                    case 'U':
+                        attron(COLOR_PAIR(16));
+                        mvaddch(y, x, 'U');
+                        attroff(COLOR_PAIR(16));
+                        break;
+                
+                case DOOR_PASSWORD:
+                    {
+                        Room* door_room = find_room_by_position(game_map, x, y);
+                        if (door_room && door_room->password_unlocked) {
+                            // Green for unlocked door
+                            attron(COLOR_PAIR(2));
+                            mvaddch(y, x, '@');
+                            attroff(COLOR_PAIR(2));
+                        } else {
+                            // Red for locked door
+                            attron(COLOR_PAIR(1));
+                            mvaddch(y, x, '@');
+                            attroff(COLOR_PAIR(1));
+                        }
+                    }
+                    break;
+
+                case TRAP_SYMBOL:
+                    // Red for triggered traps
+                    attron(COLOR_PAIR(4));
+                    mvaddch(y, x, tile);
+                    attroff(COLOR_PAIR(4));
+                    break;
+
                 case ANCIENT_KEY:
                     // Golden yellow for Ancient Key
-                    attron(COLOR_PAIR(COLOR_PAIR_HEALTH));
+                    attron(COLOR_PAIR(8));
                     mvaddstr(y, x, "▲");  // Unicode symbol
-                    attroff(COLOR_PAIR(COLOR_PAIR_HEALTH));
+                    attroff(COLOR_PAIR(8));
                     break;
 
                 case SECRET_DOOR_CLOSED:
@@ -548,13 +575,29 @@ void print_full_map(struct Map* game_map, struct Point* character_location, stru
                     break;
 
                 case WEAPON_MACE:
+                    attron(COLOR_PAIR(3));
+                    mvprintw(y, x, "\u2692"); // ⚒
+                    attroff(COLOR_PAIR(3));
+                    break;
                 case WEAPON_DAGGER:
+                    attron(COLOR_PAIR(3));
+                    mvprintw(y, x, "\U0001F5E1"); // 🗡
+                    attroff(COLOR_PAIR(3));
+                    break;
                 case WEAPON_MAGIC_WAND:
+                    attron(COLOR_PAIR(3));
+                    mvprintw(y, x, "\U0001FA84"); // 🪄
+                    attroff(COLOR_PAIR(3));
+                    break;
                 case WEAPON_ARROW:
+                    attron(COLOR_PAIR(3));
+                    mvprintw(y, x, "\u27B3");   // ➳
+                    attroff(COLOR_PAIR(3));
+                    break;
                 case WEAPON_SWORD:
                     // Color weapons in yellow
                     attron(COLOR_PAIR(3));
-                    mvaddch(y, x, tile);
+                    mvprintw(y, x, "\u2694");   // ⚔
                     attroff(COLOR_PAIR(3));
                     break;
 
@@ -1041,52 +1084,6 @@ void add_food(struct Map* map, Player* player) {
         // Could not place food after 100 attempts
         // Optionally, handle this scenario
         printf("Warning: Failed to place food after 100 attempts.\n");
-    }
-}
-
-// Function to update food items (transformations)
-void update_food_items(struct Map* map, struct MessageQueue* message_queue) {
-    time_t current_time = time(NULL);
-    for (int i = 0; i < map->food_count; i++) {
-        if (map->foods[i].consumed) continue;
-
-        FoodType type = map->foods[i].type;
-        time_t elapsed = current_time - map->foods[i].spawn_time;
-
-        // Define transformation times (in seconds)
-        // For example, after 60 seconds, transform Great and Magical to Normal
-        // and Normal to Rotten
-        if (type == FOOD_GREAT || type == FOOD_MAGICAL) {
-            if (elapsed >= 60 && elapsed < 120) {
-                // Transform Great/Magical to Normal
-                map->foods[i].type = FOOD_NORMAL;
-                map->grid[map->foods[i].position.y][map->foods[i].position.x] = 'F';
-                char message[100];
-                snprintf(message, sizeof(message), "Food at (%d, %d) has transformed to Normal Food.", 
-                         map->foods[i].position.x, map->foods[i].position.y);
-                add_game_message(message_queue, message, 14); // Yellow color
-            }
-            else if (elapsed >= 120) {
-                // Transform Normal to Rotten
-                map->foods[i].type = FOOD_ROTTEN;
-                map->grid[map->foods[i].position.y][map->foods[i].position.x] = 'F';
-                char message[100];
-                snprintf(message, sizeof(message), "Food at (%d, %d) has spoiled into Rotten Food.", 
-                         map->foods[i].position.x, map->foods[i].position.y);
-                add_game_message(message_queue, message, 7); // Red color
-            }
-        }
-        else if (type == FOOD_NORMAL) {
-            if (elapsed >= 120) {
-                // Transform Normal to Rotten
-                map->foods[i].type = FOOD_ROTTEN;
-                map->grid[map->foods[i].position.y][map->foods[i].position.x] = 'F';
-                char message[100];
-                snprintf(message, sizeof(message), "Food at (%d, %d) has spoiled into Rotten Food.", 
-                         map->foods[i].position.x, map->foods[i].position.y);
-                add_game_message(message_queue, message, 7); // Red color
-            }
-        }
     }
 }
 
@@ -2147,6 +2144,7 @@ void handle_gold_collection(Player* player, struct Map* map, struct MessageQueue
             if (type == GOLD_NORMAL) {
                 int gold_amount = rand() % 100 + 1; // Random between 1 and 100
                 player->current_gold += gold_amount;
+                player->current_score += gold_amount;
                 char message[100];
                 snprintf(message, sizeof(message), "You collected Normal Gold: +%d Gold.", gold_amount);
                 add_game_message(message_queue, message, COLOR_PAIR_HEALTH); // Green color
@@ -2154,6 +2152,7 @@ void handle_gold_collection(Player* player, struct Map* map, struct MessageQueue
             else if (type == GOLD_BLACK) {
                 int gold_amount = (rand() % 100 + 1) * 2; // Twice normal gold
                 player->current_gold += gold_amount;
+                player->current_score += gold_amount;
                 char message[100];
                 snprintf(message, sizeof(message), "You collected Black Gold: +%d Gold.", gold_amount);
                 add_game_message(message_queue, message, COLOR_PAIR_SPEED); // Blue color
@@ -2414,10 +2413,7 @@ void save_current_game(struct UserManager* manager, struct Map* game_map,
         getch();
         return;
     }
-
-        // Update scoreboard info
-    manager->current_user->score += player->current_score;
-    manager->current_user->gold  += player->current_gold;
+    
     save_users_to_json(manager);  // So scoreboard is updated
 
     char filename[256];
@@ -3119,7 +3115,6 @@ void add_enemies(struct Map* map, int current_level) {
 
             map->enemies[map->enemy_count++] = enemy;
             map->grid[y][x] = enemy.symbol;
-            map->enemy_count++;
         }
     }
 }

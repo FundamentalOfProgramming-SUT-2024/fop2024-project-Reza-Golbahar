@@ -148,6 +148,11 @@ void load_users_from_json(struct UserManager* manager) {
             fgets(line, sizeof(line), file);
             sscanf(line, " \"games_played\": %d,", &user->games_completed);
 
+            fgets(line, sizeof(line), file); 
+            int musicInt = 1;
+            sscanf(line, " \"music_on\": %d,", &musicInt);
+            user->music_on = (musicInt != 0);
+
             long first_t, last_t;
             fgets(line, sizeof(line), file);
             sscanf(line, " \"first_game_time\": %ld,", &first_t);
@@ -208,6 +213,7 @@ void save_users_to_json(struct UserManager* manager) {
         fprintf(file, "    \"color\": \"%s\",\n", user->character_color);
         fprintf(file, "    \"song\": %d,\n", user->song);
         fprintf(file, "    \"games_played\": %d,\n", user->games_completed);
+        fprintf(file, "    \"music_on\": %d,\n", user->music_on ? 1 : 0);
         fprintf(file, "    \"first_game_time\": %ld,\n", (long)user->first_game_time);
         fprintf(file, "    \"last_game_time\": %ld,\n", (long)user->last_game_time);
         //fprintf(file, "    \"days_since_first_game\": %d\n", user->days_since_first_game);  // Save the days since first game

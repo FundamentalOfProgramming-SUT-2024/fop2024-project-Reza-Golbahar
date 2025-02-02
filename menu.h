@@ -29,9 +29,10 @@ void login_menu(struct UserManager* manager);
 void register_menu(struct UserManager* manager);
 void game_menu(struct UserManager* manager);
 void print_user_profile(struct UserManager *manager);
-void play_music(int song_choice);
 void start_new_game(struct UserManager* manager);
 void continue_game(struct UserManager* manager);
+void stop_music();
+void play_music(struct User* user);
 
 
 #endif

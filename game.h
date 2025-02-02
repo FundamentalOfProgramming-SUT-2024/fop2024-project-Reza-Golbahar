@@ -98,7 +98,7 @@ static const char *ARROW_SYMBOL      = "\u27B3";   // ➳
 #define GOLD_NORMAL_SYM     '$'
 #define GOLD_BLACK_SYM      'B'
 #define FOOD_NORMAL_SYM     'T'
-#define FOOD_GREAT_SYM      'G'
+#define FOOD_GREAT_SYM      'A'
 #define FOOD_MAGICAL_SYM    'M'
 #define FOOD_ROTTEN_SYM     'R'
 #define TREASURE_CHEST_SYM  'C'
@@ -443,7 +443,6 @@ bool is_adjacent(struct Point p1, struct Point p2);
 // Function Declarations for Food
 void add_food(struct Map* map, Player* player);
 int find_last_food_of_type(Player* player, FoodType type);
-void update_food_items(struct Map* map, struct MessageQueue* message_queue);
 void update_food_inventory(Player* player, struct MessageQueue* message_queue);
 void open_food_inventory_menu(Player* player, struct MessageQueue* message_queue);
 

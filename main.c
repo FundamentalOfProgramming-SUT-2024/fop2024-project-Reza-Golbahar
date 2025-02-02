@@ -5,6 +5,9 @@
 #include "menu.h"
 #include "game.h"
 #include "users.h"
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_mixer.h>
+
 
 int main() {
 
@@ -17,10 +20,26 @@ int main() {
     // Initialize random seed with current time
     srand(time(NULL));
     init_ncurses();
+
+    // Initialize SDL
+    if (SDL_Init(SDL_INIT_AUDIO) < 0) {
+        endwin();
+        fprintf(stderr, "SDL could not initialize! SDL Error: %s\n", SDL_GetError());
+        return 1;
+    }
+
+    // Initialize SDL_mixer
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
+        endwin();
+        fprintf(stderr, "SDL_mixer could not initialize! SDL_mixer Error: %s\n", Mix_GetError());
+        return 1;
+    }
     
     // Create user manager
     struct UserManager* manager = create_user_manager();
     if (!manager) {
+        Mix_CloseAudio();
+        SDL_Quit();
         endwin();
         fprintf(stderr, "Failed to create user manager\n");
         return 1;
@@ -66,6 +85,8 @@ int main() {
 
     // Cleanup
     free_user_manager(manager);
+    Mix_CloseAudio();
+    SDL_Quit();
     endwin();
     return 0;
 }

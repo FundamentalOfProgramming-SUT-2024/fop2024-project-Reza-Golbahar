@@ -1,10 +1,12 @@
 #include <ncurses.h>
 #include <string.h>
 #include <stdlib.h>
+#include <SDL2/SDL_mixer.h>
 #include "menu.h"
 #include "users.h"
 #include "game.h"
 
+static Mix_Music* g_currentMusic = NULL;
 
 bool init_ncurses(void) {
 
@@ -244,7 +246,7 @@ void adding_new_user(struct UserManager* manager) {
         manager->usernames[manager->user_count][MAX_STRING_LEN - 1] = '\0';
 
         new_user->song = 1;  // default = 1
-        play_music(new_user->song);
+        play_music(new_user);
 
         // Write user data to JSON
         FILE* file = fopen("users.json", "a"); // Open in append mode
@@ -419,6 +421,7 @@ void settings(struct UserManager* manager) {
     mvprintw(4, 0, "Color = %s", manager->current_user->character_color);
     mvprintw(5, 0, "Song = %d", manager->current_user->song);
 
+
     mvprintw(7, 0, "Modify settings? (y/n)");
     refresh();
     
@@ -438,6 +441,13 @@ void settings(struct UserManager* manager) {
 
     mvprintw(11, 0, "Song [1-Venom, 2-Chandelier, 3-Hello]: ");
     scanw("%d", &song);
+
+    mvprintw(12, 0, "Play music? [1=ON, 0=OFF]: ");
+    int musicChoice = 1;
+    scanw("%d", &musicChoice);
+
+    // Update the current user's settings
+    manager->current_user->music_on = (musicChoice != 0);
     noecho();
 
     // Update the current user's settings
@@ -449,7 +459,7 @@ void settings(struct UserManager* manager) {
     save_users_to_json(manager);
 
     // Also optionally: play the new chosen song
-    play_music(manager->current_user->song);
+    play_music(manager->current_user);
 
     mvprintw(13, 0, "Settings saved successfully!");
     refresh();
@@ -457,12 +467,13 @@ void settings(struct UserManager* manager) {
 }
 
 void login_menu(struct UserManager* manager) {
+    stop_music();
     clear();
 
     int selected_index = users_menu(manager);
     if (selected_index > 0) {
         if (entering_menu(manager, selected_index)) {
-            play_music(manager->current_user->song);  // <-- Play the chosen song
+            play_music(manager->current_user);  // <-- Play the chosen song
             pre_game_menu(manager);
         }
     }
@@ -530,6 +541,7 @@ void pre_game_menu(struct UserManager* manager) {
                 }
                 break;
             case '6':
+                stop_music();
                 running = false;
                 break;
             default:
@@ -611,25 +623,49 @@ void print_user_profile(struct UserManager *manager) {
     getch(); // Wait for user to press any key
 }
 
-void play_music(int song_choice) {
-    // Example: store your audio files in "audio/" directory
-    // You must ensure these files exist and your system has a CLI player.
-    // For example, on Linux you might have "mpg123" or "cvlc".
-    // On Windows, you might use "start /min" or a different approach.
+void stop_music() {
+    if (Mix_PlayingMusic()) {
+        Mix_HaltMusic();
+    }
+    if (g_currentMusic) {
+        Mix_FreeMusic(g_currentMusic);
+        g_currentMusic = NULL;
+    }
+}
 
-    switch (song_choice) {
-        case 1:
-            system("cvlc --play-and-exit audio/Venom.mp3 &"); 
-            // or "start /min wmplayer \"audio\\venom.mp3\""
-            break;
-        case 2:
-            system("cvlc --play-and-exit audio/Chandelier.mp3 &"); 
-            break;
-        case 3:
-            system("cvlc --play-and-exit audio/Hello.mp3 &"); 
-            break;
-        default:
-            // If an invalid choice, do nothing or default
-            break;
+void play_music(struct User* user){
+    // 1) If user->music_on == false, stop any current music & return
+    if (!user->music_on) {
+        stop_music();
+        return;
+    }
+
+    // 2) Stop any currently playing music
+    stop_music(); // Halts & frees g_currentMusic
+
+    // 3) Decide which file to load
+    const char* path = "audio/default.mp3";
+    if (user->song == 1) {
+        path = "audio/Venom.mp3";
+    } else if (user->song == 2) {
+        path = "audio/Chandelier.mp3";
+    } else if (user->song == 3) {
+        path = "audio/Hello.mp3";
+    }
+    // if none match, path remains "audio/default.mp3", etc.
+
+    // 4) Load the new music
+    g_currentMusic = Mix_LoadMUS(path);
+    if (!g_currentMusic) {
+        // If loading fails, print error or fallback
+        printw("Failed to load music: %s\n", Mix_GetError());
+        refresh();
+        return;
+    }
+
+    // 5) Play with loop = -1 for infinite
+    if (Mix_PlayMusic(g_currentMusic, -1) == -1) {
+        printw("Mix_PlayMusic error: %s\n", Mix_GetError());
+        refresh();
     }
 }

@@ -37,6 +37,8 @@ struct User {
     int difficulty;
     char character_color[20];
     int song;
+
+    bool music_on;  // default: true (1)
 };
 
 struct UserManager {
