@@ -163,6 +163,7 @@ typedef struct Gold {
 typedef struct Enemy {
     EnemyType type;         // Type of the enemy
     struct Point position;  // Current position on the map
+    struct Point chase_origin;
     int hp;
     char symbol;
     int damage;             // Hit Points

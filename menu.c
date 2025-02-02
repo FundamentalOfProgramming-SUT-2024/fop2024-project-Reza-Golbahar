@@ -544,6 +544,7 @@ void pre_game_menu(struct UserManager* manager) {
 void start_new_game(struct UserManager* manager) {
     // We'll create a brand new Map, brand new Player
     struct Map game_map = generate_map(manager, NULL, 1, 4);
+        
     // Make a fresh Player
     Player player;
     initialize_player(manager, &player, game_map.initial_position);

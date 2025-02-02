@@ -20,7 +20,7 @@ bool hasPassword = false;  // The single definition
 #define MAX_ROOMS 10
 #define MAP_WIDTH 80
 #define MAP_HEIGHT 24
-
+#define MAX_LEVELS 5
 
 //For Ancient Keys
 int ancient_key_count = 0;
@@ -109,16 +109,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             update_visibility(game_map, &player->location, visible);
             print_map(game_map, visible, player->location, manager);
         }
-        // After player movement, check for enemy activation
-        for (int i = 0; i < game_map->enemy_count; i++) {
-            Enemy* enemy = &game_map->enemies[i];
-            
-            if (!enemy->active && is_enemy_in_same_room(player, enemy, game_map)) {
-                enemy->active = true;
-                add_game_message(&message_queue, "An enemy has spotted you!", 16); // COLOR_PAIR_ENEMIES
-            }
-        }
-        
+
         mvprintw(MAP_HEIGHT + 1, 0, 
             "Score: %d   HP: %d   Player: %s",
             player->score,
@@ -3167,14 +3158,46 @@ void update_enemies(struct Map* map, Player* player, struct MessageQueue* messag
         // 1) If not active, check if it should become active
         //    e.g., if same room or if close enough to see the player
         //    Simplest: if the player is in the same room
-        if (!e->active) {
-            Room* enemy_room = find_room_by_position(map, e->position.x, e->position.y);
-            Room* player_room = find_room_by_position(map, player->location.x, player->location.y);
-            if (enemy_room && enemy_room == player_room) {
-                e->active = true;
-                // msg_queue => "An enemy sees you!"
+        if (e->type == ENEMY_SNAKE) {
+            // once active -> remains active forever
+            if (!e->active) {
+                // check if it sees player => same room or some line-of-sight
+                if (is_enemy_in_same_room(player, e, map)) {
+                    e->active = true;
+                    add_game_message(message_queue, "An enemy has spotted you!", 16); // COLOR_PAIR_ENEMIES
+                }
             }
         }
+        if (e->type == ENEMY_DEMON || e->type == ENEMY_FIRE_BREATHING_MONSTER) {
+            if (!e->active && is_enemy_in_same_room(player, e, map)) {
+                e->active = true;
+                add_game_message(message_queue, "An enemy has spotted you!", 16); // COLOR_PAIR_ENEMIES
+            } else {
+                e->active = false;
+            }
+        }
+
+        if (e->type == ENEMY_UNDEAD || e->type == ENEMY_GIANT) {
+            // If they are not active, see if they should activate
+            // e.g., if in same room as player (or see the player)
+            if (!e->active) {
+                if (is_enemy_in_same_room(player, e, map)) {
+                    e->active = true;
+                    e->chase_origin.x = e->position.x;
+                    e->chase_origin.y = e->position.y;
+                }
+            } else {
+                // Already active => check distance from chase_origin
+                int dist = manhattanDistance(e->position.x, e->position.y, 
+                                            e->chase_origin.x, e->chase_origin.y);
+                if (dist > 5) {
+                    // too far => deactivate
+                    e->active = false;
+                }
+            }
+        }
+
+
 
         // 2) If e->active, check if the enemy can attack
         if (e->active) {
@@ -3430,22 +3453,11 @@ void throw_ranged_weapon_with_drop(
 
     // 3) Travel loop
     for (int step = 0; step < max_range; step++) {
-        cx += dx;
-        cy += dy;
+        int nx = cx += dx;
+        int ny = cy += dy;
 
         // Out of bounds => stop
-        if (!is_valid_tile(cx, cy)) break;
-
-        // If it's a wall => destroy it, projectile is lost
-        if (map->grid[cy][cx] == WALL_HORIZONTAL ||
-            map->grid[cy][cx] == WALL_VERTICAL)
-        {
-            map->grid[cy][cx] = FLOOR;
-            add_game_message(message_queue,
-                             "Your projectile destroyed the wall and was lost.",
-                             2);
-            return;  // end
-        }
+        if (!is_valid_tile(nx, ny)) break;
 
         // If there's an enemy => deal damage, stop
         bool hitEnemy = false;
