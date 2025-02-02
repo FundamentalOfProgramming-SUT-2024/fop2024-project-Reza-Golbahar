@@ -166,12 +166,12 @@ void adding_new_user(struct UserManager* manager) {
         char key = getch();
         if (key == '+'){
             // Generate password automatically
-            generate_password(password, sizeof(password));
+            generate_password(password, sizeof(password) - 1);
             printw("\nGenerated Password: %s\n", password);
             refresh();
         }        
         else{
-            echo(); // Disable echo for password
+            echo(); // Re-enable echo for password
             printw("\nEnter your password: ");
             if (getnstr(password, sizeof(password) - 1) != OK) {
                 printw("\nError reading password. Press any key to try again...");
@@ -190,7 +190,7 @@ void adding_new_user(struct UserManager* manager) {
             continue;
         }
 
-        // Using the proper password validation functions
+        // Using your password validation functions
         if (!hasupper(password) || !haslower(password) || !hasdigit(password)) {
             printw("\nPassword must contain at least one uppercase letter, one lowercase letter, and one number.\n");
             printw("Press any key to try again...");
@@ -212,9 +212,7 @@ void adding_new_user(struct UserManager* manager) {
         }
 
         // Validate email format
-        char* at = strchr(email, '@');
-        char* dot = strrchr(email, '.');
-        if (!at || !dot || at > dot || at == email || dot == at + 1 || !dot[1]) {
+        if (!validate_email(email)) {
             printw("\nInvalid email format. Must be xxx@yyy.zzz\n");
             printw("Press any key to try again...");
             refresh();
@@ -222,53 +220,40 @@ void adding_new_user(struct UserManager* manager) {
             continue;
         }
 
-        // Add the new user to the manager
+        // All validations passed; add the new user
         struct User* new_user = &manager->users[manager->user_count];
-        strncpy(new_user->username, username, MAX_STRING_LEN - 1);
-        new_user->username[MAX_STRING_LEN - 1] = '\0'; // Ensure null termination
-        strncpy(new_user->password, password, MAX_STRING_LEN - 1);
+        strncpy(new_user->username,  username,  MAX_STRING_LEN - 1);
+        strncpy(new_user->password,  password,  MAX_STRING_LEN - 1);
+        strncpy(new_user->email,     email,     MAX_STRING_LEN - 1);
+        new_user->username[MAX_STRING_LEN - 1] = '\0';
         new_user->password[MAX_STRING_LEN - 1] = '\0';
-        strncpy(new_user->email, email, MAX_STRING_LEN - 1);
-        new_user->email[MAX_STRING_LEN - 1] = '\0';
+        new_user->email[MAX_STRING_LEN - 1]    = '\0';
 
-        // Initialize other user details
-        new_user->score = 0;
+        // Initialize user details
+        new_user->score           = 0;
         new_user->games_completed = 0;
-        new_user->gold = 0;
-        new_user->first_game_time = time(NULL);
-        new_user->last_game_time = time(NULL);
-        new_user->difficulty = 1;
-        new_user->song = 1;
+        new_user->gold            = 0;
+        new_user->difficulty      = 1;
+        new_user->song            = 1;
         strcpy(new_user->character_color, "White");
+        new_user->music_on        = true;
 
-        // Store in usernames array
+        time_t now = time(NULL);
+        new_user->first_game_time = now;
+        new_user->last_game_time  = now;
+        new_user->days_since_first_game = 0;
+
+        // Also store in the manager->usernames array
         strncpy(manager->usernames[manager->user_count], username, MAX_STRING_LEN - 1);
         manager->usernames[manager->user_count][MAX_STRING_LEN - 1] = '\0';
 
-        new_user->song = 1;  // default = 1
-        play_music(new_user);
-
-        // Write user data to JSON
-        FILE* file = fopen("users.json", "a"); // Open in append mode
-        if (file) {
-            if (manager->user_count > 0) {
-                fprintf(file, ",\n");
-            }
-            fprintf(file, "  {\n");
-            fprintf(file, "    \"username\": \"%s\",\n", username);
-            fprintf(file, "    \"password\": \"%s\",\n", password);
-            fprintf(file, "    \"email\": \"%s\",\n", email);
-            fprintf(file, "    \"score\": \"0\",\n");
-            fprintf(file, "    \"gold_collected\": \"0\",\n");
-            fprintf(file, "    \"difficulty\": 1,\n");
-            fprintf(file, "    \"color\": \"White\",\n");
-            fprintf(file, "    \"games_played\": 0,\n");
-            fprintf(file, "    \"days_since_first_game\": 0\n");
-            fprintf(file, "  }\n");
-            fclose(file);
-        }
-
+        // Increase user_count
         manager->user_count++;
+
+        // Save this new user to the JSON file
+        // We'll append if the file is new, or rewrite using save_users_to_json
+        // but let's just do an immediate rewrite of the entire file for consistency:
+        save_users_to_json(manager);
 
         clear();
         printw("User successfully added!\n");
@@ -473,6 +458,7 @@ void login_menu(struct UserManager* manager) {
     int selected_index = users_menu(manager);
     if (selected_index > 0) {
         if (entering_menu(manager, selected_index)) {
+            manager->current_user->last_game_time = time(NULL);
             play_music(manager->current_user);  // <-- Play the chosen song
             pre_game_menu(manager);
         }

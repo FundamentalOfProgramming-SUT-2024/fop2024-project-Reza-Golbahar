@@ -450,6 +450,9 @@ void open_food_inventory_menu(Player* player, struct MessageQueue* message_queue
 void add_gold_to_room(struct Map* map, struct Room* room, int gold_count);
 void handle_gold_collection(Player* player, struct Map* map, struct MessageQueue* message_queue);
 void initialize_player(struct UserManager* manager, Player* player, struct Point start_location);
+void open_inventory_menu(Player* player, struct MessageQueue* message_queue, struct Map* map);
+void update_inventory_food_spoilage(Player* player, struct MessageQueue* message_queue);
+void drop_single_ammo_tile(Weapon* w, Player* player, struct MessageQueue* msg_queue, struct Map* map);
 
 // Hunger and Health Mechanics
 void update_hunger_and_health(Player* player, struct Map* map, struct MessageQueue* message_queue);
