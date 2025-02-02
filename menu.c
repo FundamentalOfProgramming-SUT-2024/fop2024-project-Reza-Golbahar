@@ -655,3 +655,51 @@ void play_music(struct User* user){
         refresh();
     }
 }
+
+void initialize_guest(struct UserManager* manager){
+    // Check if we already have a "Guest" in memory
+    // or if we can add a new user to the manager
+    int guestIndex = -1;
+    for (int i = 0; i < manager->user_count; i++) {
+        if (strcmp(manager->users[i].username, "Guest") == 0) {
+            guestIndex = i;
+            break;
+        }
+    }
+
+    if (guestIndex == -1) {
+        // We haven't created a "Guest" yet, so do it now
+        if (manager->user_count >= MAX_USERS) {
+            printw("Cannot create Guest user - max users reached!\n");
+            getch();
+            return;
+        }
+        guestIndex = manager->user_count++;
+        struct User* guestUser = &manager->users[guestIndex];
+        strcpy(guestUser->username, "Guest");
+        strcpy(guestUser->password, "guest");  // or some dummy password
+        strcpy(guestUser->email,    "guest@na");  // dummy
+        guestUser->score          = 0;
+        guestUser->games_completed= 0;
+        guestUser->gold           = 0;
+        guestUser->difficulty     = 1;
+        strcpy(guestUser->character_color, "White");
+        guestUser->song           = 1;
+        guestUser->music_on       = true;
+        guestUser->first_game_time= time(NULL);
+        guestUser->last_game_time = time(NULL);
+        guestUser->days_since_first_game = 0;
+    }
+
+    // Now set current_user to that guest
+    manager->current_user = &manager->users[guestIndex];
+
+    // Optionally display a message
+    clear();
+    mvprintw(0, 0, "Playing as Guest...");
+    refresh();
+    getch();
+
+    // Start a new game
+    start_new_game(manager);
+}

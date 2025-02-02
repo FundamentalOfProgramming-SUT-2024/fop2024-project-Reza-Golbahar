@@ -69,8 +69,7 @@ int main() {
                 break;
             case '3':
                 // Play as guest
-                manager->current_user = NULL;
-                pre_game_menu(manager);
+                initialize_guest(manager);
                 break;
             case '4':
                 running = false;

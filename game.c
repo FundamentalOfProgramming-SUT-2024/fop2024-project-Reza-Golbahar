@@ -114,9 +114,11 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         }
 
         mvprintw(MAP_HEIGHT + 1, 0, 
-            "Score: %d   HP: %d   Player: %s",
+            "Score: %d   HP: %d   Hunger Rate: %d/100    Gold: %d  Player: %s",
             player->current_score,
             player->hitpoints,
+            player->hunger_rate,
+            player->current_gold,
             manager->current_user ? manager->current_user->username : "Guest");
         
         // Show game info
@@ -128,7 +130,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             mvprintw(MAP_HEIGHT + 2, 0, "Level: %d                             Equipped Weapon: None"
                     ,current_level);
         }
-        mvprintw(MAP_HEIGHT + 4, 0, "Controls: Arrow Keys to Move, 'i' - Weapon Inventory, 'e' - General Inventory, 'q' - Quit,  'z' -save");
+        mvprintw(MAP_HEIGHT + 4, 0, "Controls: Arrow Keys to Move or use numbers of numpad,  'r' - Weapon Inventory, 'e' - General Inventory, 'q' - Quit \n'z' - save   'x' - spell inventory");
         refresh();
 
         // Increase hunger rate over time
@@ -274,6 +276,14 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             case KEY_DOWN:
             case KEY_LEFT:
             case KEY_RIGHT:
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '6':
+            case '7':
+            case '8':
+            case '9':
                 // Move the character
                 move_character(player, key, game_map, &player->hitpoints, &message_queue);
 
@@ -366,8 +376,8 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                 }
                 break;
             
-            case 'i':
-            case 'I':
+            case 'r':
+            case 'R':
                 // Open the weapon inventory menu
                 open_weapon_inventory_menu(player, game_map, &message_queue);
                 break;
@@ -933,7 +943,6 @@ void add_traps_to_room(struct Map* map, struct Room* room, int trap_count) {
     }
 }
 
-
 void open_inventory_menu(Player* player, struct MessageQueue* message_queue, struct Map* map) {
     bool menu_open = true;
 
@@ -978,21 +987,21 @@ void open_inventory_menu(Player* player, struct MessageQueue* message_queue, str
         //---------------------------------
         // 3) Show Gold and Keys
         //---------------------------------
-        mvprintw(7, 0, "Gold Collected: %d", player->current_gold);
-        mvprintw(8, 0, "Ancient Keys:   %d", player->ancient_key_count);
-        mvprintw(9, 0, "Broken Keys:    %d", player->broken_key_count);
+        mvprintw(7, 0, "Gold Collected:  %d", player->current_gold);
+        mvprintw(8, 0, "Ancient Keys:    %d", player->ancient_key_count);
+        mvprintw(9, 0, "Broken Key Pieces: %d", player->broken_key_count);
 
         //---------------------------------
         // 4) Show Ranged Weapons + Ammo
         //---------------------------------
-        mvprintw(11,0, "[Ranged Weapon Info - optional to display]");
+        mvprintw(11,0, "[Ranged Weapon Info - optional to display here]");
 
         //---------------------------------
         // 5) Instructions
         //---------------------------------
         mvprintw(13, 0, "Commands:");
         mvprintw(14, 2, "u <foodtype>    - Use last item of type (normal/great/magical/rotten)");
-        mvprintw(15, 2, "c               - Combine broken key pieces into 1 Ancient Key");
+        mvprintw(15, 2, "c               - Combine 2 broken keys into 1 working Ancient Key");
         mvprintw(16, 2, "d <weaponIndex> - Drop 1 ammo from a ranged weapon");
         mvprintw(17, 2, "q               - Quit inventory");
         refresh();
@@ -1005,17 +1014,22 @@ void open_inventory_menu(Player* player, struct MessageQueue* message_queue, str
         getnstr(input, sizeof(input) - 1);
         noecho();
 
-        if (!strlen(input)) continue;  // empty => loop
+        if (!strlen(input)) continue;  // If empty, just re-print
 
-        // parse
         char cmd;
         if (sscanf(input, "%c", &cmd) == 1) {
             cmd = tolower(cmd);
+
+            //---------------------------------
+            // Quit
+            //---------------------------------
             if (cmd == 'q') {
                 menu_open = false;
             }
+            //---------------------------------
+            // Combine Broken Keys => 'c'
+            //---------------------------------
             else if (cmd == 'c') {
-                // Combine broken keys => same as old code
                 if (player->broken_key_count >= 2) {
                     player->broken_key_count -= 2;
                     player->ancient_key_count++;
@@ -1026,25 +1040,30 @@ void open_inventory_menu(Player* player, struct MessageQueue* message_queue, str
                         "Not enough broken pieces to combine!", 7);
                 }
             }
+            //---------------------------------
+            // Use Food => 'u'
+            //---------------------------------
             else if (cmd == 'u') {
-                // Use Food e.g. "u normal"
                 char type_str[16];
+                // read the type, e.g. "normal", "great", "magical", "rotten"
                 if (sscanf(input + 1, "%s", type_str) == 1) {
-                    // Convert type_str to lower
+                    // Convert to lowercase
                     for (int i = 0; type_str[i]; i++) {
                         type_str[i] = tolower((unsigned char)type_str[i]);
                     }
+
                     FoodType consume_type;
-                    if      (strcmp(type_str, "normal")   == 0) consume_type = FOOD_NORMAL;
-                    else if (strcmp(type_str, "great")    == 0) consume_type = FOOD_GREAT;
-                    else if (strcmp(type_str, "magical")  == 0) consume_type = FOOD_MAGICAL;
-                    else if (strcmp(type_str, "rotten")   == 0) consume_type = FOOD_ROTTEN;
+                    if      (strcmp(type_str, "normal")  == 0) consume_type = FOOD_NORMAL;
+                    else if (strcmp(type_str, "great")   == 0) consume_type = FOOD_GREAT;
+                    else if (strcmp(type_str, "magical") == 0) consume_type = FOOD_MAGICAL;
+                    else if (strcmp(type_str, "rotten")  == 0) consume_type = FOOD_ROTTEN;
                     else {
                         add_game_message(message_queue,
                             "Unknown food type. Use 'normal', 'great', 'magical', or 'rotten'.", 7);
                         continue;
                     }
 
+                    // Find the last item of that type
                     int index = find_last_food_of_type(player, consume_type);
                     if (index == -1) {
                         add_game_message(message_queue,
@@ -1054,8 +1073,10 @@ void open_inventory_menu(Player* player, struct MessageQueue* message_queue, str
                     }
                 }
             }
+            //---------------------------------
+            // Drop 1 ammo => 'd'
+            //---------------------------------
             else if (cmd == 'd') {
-                // Drop 1 ammo from a ranged weapon
                 int wIndex;
                 if (sscanf(input + 1, "%d", &wIndex) == 1) {
                     // Convert to 0-based
@@ -1065,17 +1086,20 @@ void open_inventory_menu(Player* player, struct MessageQueue* message_queue, str
                         if (w->type == RANGED && w->quantity > 0) {
                             w->quantity -= 1; // dropping 1
                             // Place a single-ammo symbol on the map
-                            // e.g., '1' = arrow, '2' = dagger, etc.
-                            // (Assuming we have a function drop_single_ammo_tile)
                             drop_single_ammo_tile(w, player, message_queue, map);
                         } else {
-                            add_game_message(message_queue, "Invalid drop (either not ranged or 0 ammo).", 7);
+                            add_game_message(message_queue,
+                                "Invalid drop (not ranged or 0 ammo).", 7);
                         }
                     } else {
-                        add_game_message(message_queue, "Invalid weapon index!", 7);
+                        add_game_message(message_queue,
+                            "Invalid weapon index!", 7);
                     }
                 }
             }
+            //---------------------------------
+            // Unknown Command
+            //---------------------------------
             else {
                 add_game_message(message_queue, "Unknown command!", 7);
             }
@@ -1778,9 +1802,9 @@ void move_character(Player* player, int key, struct Map* game_map, int* hitpoint
 
             // Numpad straights
             case '8': new_location.y-=1; break; // up
-            case '2': new_location.y+=1; break; // down
-            case '4': new_location.x-=1; break; // left
-            case '6': new_location.x+=1; break; // right
+            case '4': new_location.y+=1; break; // down
+            case '6': new_location.x-=1; break; // left
+            case '2': new_location.x+=1; break; // right
             default: return;
         }
 
@@ -2006,6 +2030,7 @@ void handle_death(struct UserManager* manager, Player* player) {
         snprintf(filename, sizeof(filename), "saves/%s.sav", manager->current_user->username);
         remove(filename);
     }
+    clear();
     printw("You lost the match! Better luck next time.\nPress any key to continue.\n");
     getch();
 }
@@ -2505,8 +2530,10 @@ void save_current_game(struct UserManager* manager, struct Map* game_map,
     
     fwrite(&save, sizeof(save), 1, file);
     fclose(file);
-    mvprintw(2, 0, "Game saved successfully!");
-    getch();
+    if (manager->current_user->username == "guest"){
+        mvprintw(2, 0, "Game saved successfully!");
+        getch();
+    }
 }
 
 bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game) {

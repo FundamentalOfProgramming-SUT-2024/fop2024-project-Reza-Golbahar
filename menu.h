@@ -33,6 +33,7 @@ void start_new_game(struct UserManager* manager);
 void continue_game(struct UserManager* manager);
 void stop_music();
 void play_music(struct User* user);
+void initialize_guest(struct UserManager* manager);
 
 
 #endif

@@ -190,39 +190,45 @@ void save_users_to_json(struct UserManager* manager) {
     }
 
     fprintf(file, "[\n");
+    bool firstPrinted = false;
+
     for (int i = 0; i < manager->user_count; i++) {
         struct User* user = &manager->users[i];
 
-        // Update score and gold_collected before saving
-        int total_score = user->score;  // Assuming current score is what needs to be saved
-        int total_gold = user->gold;  // Gold collected from the game
-
-        // If it's the first time saving, calculate days_since_first_game
-        if (user->games_completed == 0) {
-            user->days_since_first_game = (int)((time(NULL) - user->first_game_time) / (24 * 3600));
+        // If username is "Guest", skip saving
+        if (strcmp(user->username, "Guest") == 0) {
+            continue; 
         }
 
-        // Save the user data to the file
+        // Print a comma + newline before each user except the very first
+        if (firstPrinted) {
+            fprintf(file, ",\n");
+        } else {
+            firstPrinted = true;
+        }
+
+        // Then save the user as normal
         fprintf(file, "  {\n");
         fprintf(file, "    \"username\": \"%s\",\n", user->username);
         fprintf(file, "    \"password\": \"%s\",\n", user->password);
-        fprintf(file, "    \"email\": \"%s\",\n", user->email);
-        fprintf(file, "    \"score\": \"%d\",\n", total_score); // Save the updated score
-        fprintf(file, "    \"gold_collected\": \"%d\",\n", total_gold); // Save gold collected
-        fprintf(file, "    \"difficulty\": %d,\n", user->difficulty);
-        fprintf(file, "    \"color\": \"%s\",\n", user->character_color);
-        fprintf(file, "    \"song\": %d,\n", user->song);
-        fprintf(file, "    \"games_played\": %d,\n", user->games_completed);
-        fprintf(file, "    \"music_on\": %d,\n", user->music_on ? 1 : 0);
+        fprintf(file, "    \"email\": \"%s\",\n",    user->email);
+        fprintf(file, "    \"score\": \"%d\",\n",    user->score);
+        fprintf(file, "    \"gold_collected\": \"%d\",\n", user->gold);
+        fprintf(file, "    \"difficulty\": %d,\n",    user->difficulty);
+        fprintf(file, "    \"color\": \"%s\",\n",     user->character_color);
+        fprintf(file, "    \"song\": %d,\n",          user->song);
+        fprintf(file, "    \"games_played\": %d,\n",  user->games_completed);
+        fprintf(file, "    \"music_on\": %d,\n",      user->music_on ? 1 : 0);
         fprintf(file, "    \"first_game_time\": %ld,\n", (long)user->first_game_time);
-        fprintf(file, "    \"last_game_time\": %ld,\n", (long)user->last_game_time);
-        //fprintf(file, "    \"days_since_first_game\": %d\n", user->days_since_first_game);  // Save the days since first game
-
-        fprintf(file, "  }%s\n", i < manager->user_count - 1 ? "," : "");
+        fprintf(file, "    \"last_game_time\": %ld\n", (long)user->last_game_time);
+        // If you want to store days_since_first_game, do so too
+        fprintf(file, "  }");
     }
-    fprintf(file, "]\n");
+
+    fprintf(file, "\n]\n");
     fclose(file);
 }
+
 
 bool authenticate_user(struct UserManager* manager, int index, const char* password) {
     if (index < 0 || index >= manager->user_count) {
