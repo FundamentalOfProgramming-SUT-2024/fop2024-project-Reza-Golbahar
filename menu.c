@@ -436,7 +436,7 @@ void settings(struct UserManager* manager) {
     mvprintw(10, 0, "Character color [White/Red/Blue/Green]: ");
     scanw("%s", color);
 
-    mvprintw(11, 0, "Song [1-Venom, 2-Rap God, 3-Hello]: ");
+    mvprintw(11, 0, "Song [1-Venom, 2-Chandelier, 3-Hello]: ");
     scanw("%d", &song);
     noecho();
 
@@ -543,13 +543,13 @@ void pre_game_menu(struct UserManager* manager) {
 
 void start_new_game(struct UserManager* manager) {
     // We'll create a brand new Map, brand new Player
-    struct Map game_map = generate_map(manager, NULL, 1, 4);
-        
+    struct Map game_map = generate_map(manager, NULL, 1, 4, 0, 0);
+
     // Make a fresh Player
     Player player;
     initialize_player(manager, &player, game_map.initial_position);
     // Now start play
-    play_game(manager, &game_map, &player, player.score);
+    play_game(manager, &game_map, &player, player.current_score);
 }
 
 void continue_game(struct UserManager* manager) {
@@ -564,7 +564,7 @@ void continue_game(struct UserManager* manager) {
         struct Map game_map = loaded.game_map;
         Player player = loaded.player;
         // Continue exactly
-        play_game(manager, &game_map, &player, player.score);
+        play_game(manager, &game_map, &player, player.current_score);
     }
 }
 
@@ -619,14 +619,14 @@ void play_music(int song_choice) {
 
     switch (song_choice) {
         case 1:
-            system("cvlc --play-and-exit audio/venom.mp3 &"); 
+            system("cvlc --play-and-exit audio/Venom.mp3 &"); 
             // or "start /min wmplayer \"audio\\venom.mp3\""
             break;
         case 2:
-            system("cvlc --play-and-exit audio/rap_god.mp3 &"); 
+            system("cvlc --play-and-exit audio/Chandelier.mp3 &"); 
             break;
         case 3:
-            system("cvlc --play-and-exit audio/hello.mp3 &"); 
+            system("cvlc --play-and-exit audio/Hello.mp3 &"); 
             break;
         default:
             // If an invalid choice, do nothing or default

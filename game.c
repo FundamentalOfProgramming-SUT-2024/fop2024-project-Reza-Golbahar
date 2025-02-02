@@ -40,11 +40,13 @@ void initialize_player(struct UserManager* manager, Player* player, struct Point
     player->location = start_location;
     player->hitpoints = 210 - (manager->current_user->difficulty * 10);
     player->hunger_rate = 0;
-    player->score = 0;
+
     player->weapon_count = 1;
     player->equipped_weapon = 0; // Equip first weapon
     player->ancient_key_count = 0;
     player->broken_key_count = 0;
+    player->current_score = 0;
+    player->current_gold = 0;
 
     // Initialize weapons
     player->weapons[0] = create_weapon(WEAPON_MACE);
@@ -112,7 +114,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
 
         mvprintw(MAP_HEIGHT + 1, 0, 
             "Score: %d   HP: %d   Player: %s",
-            player->score,
+            player->current_score,
             player->hitpoints,
             manager->current_user ? manager->current_user->username : "Guest");
         
@@ -162,7 +164,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
 
         // Check if hitpoints are zero
         if (player->hitpoints <= 0) {
-            add_game_message(&message_queue, "Game Over! You ran out of hitpoints.", 7); // COLOR_PAIR_FINAL_FAIL
+            handle_death(manager, player);
             game_running = false;
         }
 
@@ -293,7 +295,11 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                         }
 
                         // Generate the next map with current_level and max_level
-                        struct Map new_map = generate_map(manager, current_room, current_level, max_level);
+                        int stair_x = player->location.x; 
+                        int stair_y = player->location.y;
+                        Room* old_room = find_room_by_position(game_map, player->location.x, player->location.y);
+
+                        struct Map new_map = generate_map(manager, current_room, current_level, max_level, stair_x, stair_y);
                         *game_map = new_map;
 
                         add_game_message(&message_queue, "Level up! Welcome to Level.", 3); // COLOR_PAIR_WEAPONS
@@ -308,18 +314,18 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                         //add_game_message(&message_queue, "Congratulations! You've completed all levels.", 2); // COLOR_PAIR_UNLOCKED_DOOR
                         game_running = false;
                     }
-                } else if (tile == FOOD_NORMAL_SYM || tile == FOOD_GREAT_SYM || 
-                    tile == FOOD_MAGICAL_SYM || tile == FOOD_ROTTEN_SYM) {
-                    // Collect food
-                } else if (tile == GOLD_NORMAL_SYM || tile == GOLD_BLACK_SYM) {
-                    // Collect gold
-                    handle_gold_collection(player, game_map, &message_queue);
-                } else if (tile == TREASURE_CHEST_SYM) {
+                }
+                
+                
+                else if (tile == TREASURE_CHEST_SYM) {
                     // Handle treasure chest
                     // Example: Increase score or provide rewards
                     add_game_message(&message_queue, "You found a Treasure Chest!", COLOR_PAIR_HEALTH);
                     // Implement further logic as needed
-                } else if (tile == FLOOR) {
+                }
+                
+                
+                else if (tile == FLOOR) {
                     // Check for traps
                     for (int i = 0; i < game_map->trap_count; i++) {
                         Trap* trap = &game_map->traps[i];
@@ -594,7 +600,7 @@ void print_full_map(struct Map* game_map, struct Point* character_location, stru
     }
 }
 
-struct Map generate_map(struct UserManager* manager, struct Room* previous_room, int current_level, int max_level) {
+struct Map generate_map(struct UserManager* manager, struct Room* previous_room, int current_level, int max_level, int stair_x, int stair_y) {
     struct Map map;
     init_map(&map);
 
@@ -638,6 +644,37 @@ struct Map generate_map(struct UserManager* manager, struct Room* previous_room,
         int chest_y = chest_room->top_wall + 2;
         map.grid[chest_y][chest_x] = TREASURE_CHEST_SYM;  // e.g. 'C'
     }
+
+    
+    if (previous_room != NULL && current_level != 5) {
+        // create a single big Room with the same dimensions
+        Room same;
+        same.left_wall   = previous_room->left_wall;
+        same.right_wall  = previous_room->right_wall;
+        same.top_wall    = previous_room->top_wall;
+        same.bottom_wall = previous_room->bottom_wall;
+        same.width  = same.right_wall  - same.left_wall;
+        same.height = same.bottom_wall - same.top_wall;
+
+        same.theme      = THEME_NORMAL;
+        same.door_count = 0;
+        same.has_stairs = false;
+        same.visited    = false;
+        
+        map.rooms[0] = same;
+        map.room_count = 1;
+
+        // Place that room
+        place_room(&map, &map.rooms[0]);
+
+        if (stair_x != 0 && stair_y != 0){
+            map.grid[stair_y][stair_x] = '<'; // or some tile
+        }
+
+        // If you also want to place your usual random rooms, 
+        // do them after room_count=1, e.g. i from 1..num_rooms-1
+    }
+
 
     // Determine the number of rooms based on the level or other criteria
     int num_rooms = MIN_ROOM_COUNT + rand() % (MAX_ROOMS - MIN_ROOM_COUNT + 1);
@@ -1665,6 +1702,18 @@ void move_character(Player* player, int key, struct Map* game_map, int* hitpoint
             case KEY_LEFT:  new_location.x--;      break;
 
             case KEY_RIGHT: new_location.x++;      break;
+
+            // Numpad diagonals
+            case '7': new_location.x-=1; new_location.y-=1; break; // up-left
+            case '9': new_location.x+=1; new_location.y-=1; break; // up-right
+            case '1': new_location.x-=1; new_location.y+=1; break; // down-left
+            case '3': new_location.x+=1; new_location.y+=1; break;
+
+            // Numpad straights
+            case '8': new_location.y-=1; break; // up
+            case '2': new_location.y+=1; break; // down
+            case '4': new_location.x-=1; break; // left
+            case '6': new_location.x+=1; break; // right
             default: return;
         }
 
@@ -1867,20 +1916,30 @@ void move_character(Player* player, int key, struct Map* game_map, int* hitpoint
 }
 
 void finalize_victory(struct UserManager* manager, Player* player) {
-    // Update scoreboard info (score, gold, etc.)
     if (manager->current_user) {
-        manager->current_user->score += player->score; 
-        manager->current_user->gold  += player->gold_count;
-        manager->current_user->games_completed++;
-        save_users_to_json(manager);
-    }
+        // Remove last save
+        char filename[256];
+        snprintf(filename, sizeof(filename), "saves/%s.sav", manager->current_user->username);
+        remove(filename);
 
-    // Print a "You have won" message
-    clear();
-    mvprintw(0, 0, "Congratulations! You have defeated the Treasure Room!");
-    mvprintw(2, 0, "Your final score and gold are saved.");
-    mvprintw(4, 0, "Press any key to continue...");
-    refresh();
+        // Add the player's current gold/score to the user
+        manager->current_user->score += player->current_score; 
+        manager->current_user->gold  += player->current_gold;
+        save_users_to_json(manager);
+
+        printw("Congratulations, you reached the treasure room!\n");
+        getch();
+    }
+}
+
+void handle_death(struct UserManager* manager, Player* player) {
+    // same idea: remove the .sav
+    if (manager->current_user) {
+        char filename[256];
+        snprintf(filename, sizeof(filename), "saves/%s.sav", manager->current_user->username);
+        remove(filename);
+    }
+    printw("You lost the match! Better luck next time.\nPress any key to continue.\n");
     getch();
 }
 
@@ -2087,14 +2146,14 @@ void handle_gold_collection(Player* player, struct Map* map, struct MessageQueue
 
             if (type == GOLD_NORMAL) {
                 int gold_amount = rand() % 100 + 1; // Random between 1 and 100
-                player->gold_count += gold_amount;
+                player->current_gold += gold_amount;
                 char message[100];
                 snprintf(message, sizeof(message), "You collected Normal Gold: +%d Gold.", gold_amount);
                 add_game_message(message_queue, message, COLOR_PAIR_HEALTH); // Green color
             }
             else if (type == GOLD_BLACK) {
                 int gold_amount = (rand() % 100 + 1) * 2; // Twice normal gold
-                player->gold_count += gold_amount;
+                player->current_gold += gold_amount;
                 char message[100];
                 snprintf(message, sizeof(message), "You collected Black Gold: +%d Gold.", gold_amount);
                 add_game_message(message_queue, message, COLOR_PAIR_SPEED); // Blue color
@@ -2357,68 +2416,30 @@ void save_current_game(struct UserManager* manager, struct Map* game_map,
     }
 
         // Update scoreboard info
-    manager->current_user->score += player->score;
-    manager->current_user->gold  += player->gold_count;
+    manager->current_user->score += player->current_score;
+    manager->current_user->gold  += player->current_gold;
     save_users_to_json(manager);  // So scoreboard is updated
 
-    char filename[256]; // Ensure buffer is large enough
-    char save_name[100];
-
-    clear();
-    echo();
-    mvprintw(0, 0, "Enter name for this save: ");
-    refresh();
-    getnstr(save_name, sizeof(save_name) - 1); // Limit input to fit within the buffer
-    noecho();
-
-    // Truncate username and save_name if they exceed a safe length
-    char safe_username[94]; // Leave space for prefix, underscore, extension
-    char safe_save_name[94];
-    strncpy(safe_username, manager->current_user->username, 93);
-    safe_username[93] = '\0';
-    strncpy(safe_save_name, save_name, 93);
-    safe_save_name[93] = '\0';
-
-    // Create filename using truncated strings
-    int written = snprintf(filename, sizeof(filename), "saves/%s_%s.sav", safe_username, safe_save_name);
-    if (written < 0 || written >= sizeof(filename)) {
-        mvprintw(2, 0, "Error: Filename too long.");
-        refresh();
-        getch();
-        return;
-    }
+    char filename[256];
+    snprintf(filename, sizeof(filename), "saves/%s.sav", manager->current_user->username);
 
     FILE* file = fopen(filename, "wb");
     if (!file) {
         mvprintw(2, 0, "Error: Could not create save file.");
-        refresh();
         getch();
         return;
     }
 
     struct SavedGame save;
-    // Ensure that SavedGame struct includes a Player member
-    // Assuming SavedGame is defined as follows:
-    // typedef struct {
-    //     struct Map game_map;
-    //     Player player;
-    //     int current_level;
-    //     char name[100];
-    //     time_t save_time;
-    // } SavedGame;
-
     save.game_map = *game_map;
-    save.player = *player;
+    save.player   = *player;
     save.current_level = current_level;
-    strncpy(save.name, save_name, sizeof(save.name) - 1);
-    save.name[sizeof(save.name) - 1] = '\0';
     save.save_time = time(NULL);
-
-    fwrite(&save, sizeof(struct SavedGame), 1, file);
+    // We do not ask for name => skip "char name[]"
+    
+    fwrite(&save, sizeof(save), 1, file);
     fclose(file);
-
     mvprintw(2, 0, "Game saved successfully!");
-    refresh();
     getch();
 }
 
@@ -2429,61 +2450,18 @@ bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game) 
         return false;
     }
 
-    clear();
-    mvprintw(0, 0, "Enter save name to load: ");
-    list_saved_games(manager); // prints saves
-    mvprintw(2, 0, "> ");
-    refresh();
-
-    char save_name[100];
-    echo();
-    getnstr(save_name, sizeof(save_name)-1);
-    noecho();
-
     char filename[256];
-    snprintf(filename, sizeof(filename),
-             "saves/%s_%s.sav",
-             manager->current_user->username, save_name);
+    snprintf(filename, sizeof(filename), "saves/%s.sav", manager->current_user->username);
 
     FILE* file = fopen(filename, "rb");
     if (!file) {
-        mvprintw(4, 0, "Error: Could not find save file.");
+        mvprintw(2, 0, "No saved game found for user: %s", manager->current_user->username);
         getch();
         return false;
     }
-
-    fread(saved_game, sizeof(*saved_game), 1, file);
+    //fread(out_save, sizeof(*out_save), 1, file);
     fclose(file);
-
-    return true; // success
-}
-
-void list_saved_games(struct UserManager* manager) {
-    if (!manager->current_user) return;
-
-    char cmd[MAX_STRING_LEN * 3];
-    snprintf(cmd, sizeof(cmd), "ls saves/%s_*.sav 2>/dev/null", 
-             manager->current_user->username);
-
-    FILE* pipe = popen(cmd, "r");
-    if (!pipe) return;
-
-    mvprintw(0, 0, "Available saved games:");
-    int line = 2;
-    char buffer[256];
-    
-    while (fgets(buffer, sizeof(buffer), pipe)) {
-        // Extract save name from filename
-        char* start = strrchr(buffer, '_') + 1;
-        char* end = strrchr(buffer, '.');
-        if (start && end) {
-            *end = '\0';
-            mvprintw(line++, 0, "%s", start);
-        }
-    }
-    
-    pclose(pipe);
-    refresh();
+    return true;
 }
 
 void place_windows(struct Map* map, struct Room* room) {
@@ -3256,12 +3234,15 @@ bool is_valid_tile(int x, int y) {
 }
 
 // Function to deal damage to enemy at specific tile location
-void deal_damage_to_enemy(struct Map* map, int x, int y, int damage, struct MessageQueue* message_queue) {
+void deal_damage_to_enemy(Player* player, struct Map* map, int x, int y, int damage, struct MessageQueue* message_queue) {
     for (int i = 0; i < map->enemy_count; i++) {
         Enemy* enemy = &map->enemies[i];
         if (enemy->position.x == x && enemy->position.y == y) {
             enemy->hp -= damage;
             if (enemy->hp <= 0) {
+                player->current_score += (2 * enemy->damage);
+
+
                 // Remove enemy from the map
                 map->grid[enemy->position.y][enemy->position.x] = FLOOR;
                 // Remove enemy from the enemy list
@@ -3399,7 +3380,7 @@ void use_melee_weapon(Player* player, Weapon* weapon, struct Map* map, struct Me
                     base_damage *= 2;  // double
                 }
                 // Then apply base_damage to the enemy
-                deal_damage_to_enemy(map, tx, ty, dmg, msg_queue);
+                deal_damage_to_enemy(player, map, tx, ty, dmg, msg_queue);
             }
         }
     }
@@ -3469,7 +3450,7 @@ void throw_ranged_weapon_with_drop(
                 if (player->damage_spell_steps > 0) {
                     base_damage *= 2;  // double if Damage Spell active
                 }
-                deal_damage_to_enemy(map, cx, cy, base_damage, message_queue);
+                deal_damage_to_enemy(player, map, cx, cy, base_damage, message_queue);
 
                 add_game_message(message_queue,
                     "Your projectile hit an enemy and stopped!",

@@ -281,13 +281,14 @@ typedef struct Spell {
 
 // Player structure update to include weapon inventory
 typedef struct Player {
+    int current_score;
+    int current_gold;
+
     struct Point location;
     int hitpoints;
     int hunger_rate;
-    int score;
 
     int food_count; // New food count
-    int gold_count;
 
     Food foods[100];
     
@@ -377,7 +378,7 @@ void print_full_map(struct Map* game_map, struct Point* character_location, stru
 void save_current_game(struct UserManager* manager, struct Map* game_map, 
                       Player* player, int current_level);
 bool load_saved_game(struct UserManager* manager, struct SavedGame* saved_game);
-void list_saved_games(struct UserManager* manager);
+void handle_death(struct UserManager* manager, Player* player);
 
 // Room connectivity
 void connect_rooms_with_corridors(struct Map* map);
@@ -404,7 +405,7 @@ void run_in_direction(Player* player, struct Map* map, int dx, int dy);
 
 // Map display
 void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct Point character_location, struct UserManager* manager);
-struct Map generate_map(struct UserManager* manager, struct Room* previous_room, int current_level, int max_level) ;
+struct Map generate_map(struct UserManager* manager, struct Room* previous_room, int current_level, int max_level, int stair_x, int stair_y) ;
 
 // Function declarations for weapons
 void add_weapons(struct Map* map, Player* player);
@@ -435,7 +436,7 @@ void throw_ranged_weapon_with_drop(
     Player* player, Weapon* weapon, struct Map* map,
     struct MessageQueue* msg_queue, int dx, int dy);
 void use_melee_weapon(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* msg_queue);
-void deal_damage_to_enemy(struct Map* map, int x, int y, int damage, struct MessageQueue* message_queue);
+void deal_damage_to_enemy(Player* player, struct Map* map, int x, int y, int damage, struct MessageQueue* message_queue);
 bool is_valid_tile(int x, int y);
 bool is_adjacent(struct Point p1, struct Point p2);
 
