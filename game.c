@@ -93,7 +93,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
 
         if (show_map) {
             // Display the entire map
-            print_full_map(game_map, &player, manager);
+            print_full_map(game_map, &player->location, manager);
         } else {
             // Update visibility based on player's field of view
             update_visibility(game_map, &player->location, visible);
@@ -108,7 +108,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         for (int i = 0; i < game_map->enemy_count; i++) {
             Enemy* enemy = &game_map->enemies[i];
             
-            if (!enemy->active && is_enemy_in_same_room(&player, enemy, game_map)) {
+            if (!enemy->active && is_enemy_in_same_room(player, enemy, game_map)) {
                 enemy->active = true;
                 add_game_message(&message_queue, "An enemy has spotted you!", 16); // COLOR_PAIR_ENEMIES
             }
@@ -121,10 +121,10 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             manager->current_user ? manager->current_user->username : "Guest");
         
         // Show game info
-        if (player.equipped_weapon != -1) {
+        if (player->equipped_weapon != -1) {
         mvprintw(MAP_HEIGHT + 2, 0, "Level: %d                             Equipped Weapon: %s (Damage: %d)",
-                     current_level, player.weapons[player.equipped_weapon].name, 
-                     player.weapons[player.equipped_weapon].damage);
+                     current_level, player->weapons[player->equipped_weapon].name, 
+                     player->weapons[player->equipped_weapon].damage);
         } else {
             mvprintw(MAP_HEIGHT + 2, 0, "Level: %d                             Equipped Weapon: None"
                     ,current_level);
@@ -134,15 +134,15 @@ void play_game(struct UserManager* manager, struct Map* game_map,
 
         // Increase hunger rate over time
         if (frame_count % HUNGER_INCREASE_INTERVAL == 0) {
-            if (player.hunger_rate < MAX_HUNGER) {
-                player.hunger_rate++;
+            if (player->hunger_rate < MAX_HUNGER) {
+                player->hunger_rate++;
             }
         }
 
         // Decrease hitpoints if hunger exceeds threshold
-        if (player.hunger_rate >= MAX_HUNGER) {
+        if (player->hunger_rate >= MAX_HUNGER) {
             if (hunger_damage_timer % HUNGER_DAMAGE_INTERVAL == 0) {
-                player.hitpoints -= HITPOINT_DECREASE_RATE;
+                player->hitpoints -= HITPOINT_DECREASE_RATE;
                 add_game_message(&message_queue, "Hunger is too high! HP decreased.", 4); // COLOR_PAIR_TRAPS
             }
             hunger_damage_timer++;
@@ -151,7 +151,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         }
 
         // Check if hitpoints are zero
-        if (player.hitpoints <= 0) {
+        if (player->hitpoints <= 0) {
             add_game_message(&message_queue, "Game Over! You ran out of hitpoints.", 7); // COLOR_PAIR_FINAL_FAIL
             game_running = false;
         }
@@ -160,8 +160,8 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         // Example: Add a new food and gold every 30 seconds
         static time_t last_item_add_time = 0;
         if (difftime(time(NULL), last_item_add_time) >= 30.0) {
-            add_food(game_map, &player);
-            add_gold(game_map, &player);
+            add_food(game_map, player);
+            add_gold(game_map, player);
             last_item_add_time = time(NULL);
         }
         update_temporary_effects(player, game_map, &message_queue);
@@ -189,7 +189,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         }
         if (key=='g'){
             if (manager->current_user)
-                save_current_game(manager, game_map, &player, current_level);
+                save_current_game(manager, game_map, player, current_level);
         }
         switch (key) {
             case KEY_UP:
@@ -197,11 +197,11 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             case KEY_LEFT:
             case KEY_RIGHT:
                 // Move the character
-                move_character(player, key, game_map, &player.hitpoints, &message_queue);
+                move_character(player, key, game_map, &player->hitpoints, &message_queue);
 
                 update_enemies(game_map, player, &message_queue);
                 // Check the tile the player moves onto
-                char tile = game_map->grid[character_location->y][character_location->x];
+                char tile = game_map->grid[player->location.y][player->location.x];
 
                 if (tile == STAIRS) {
                     // Handle level up logic
@@ -211,7 +211,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
 
                         // Find the current room
                         for (int i = 0; i < game_map->room_count; i++) {
-                            if (isPointInRoom(character_location, &game_map->rooms[i])) {
+                            if (isPointInRoom(&player->location, &game_map->rooms[i])) {
                                 current_room = &game_map->rooms[i];
                                 break;
                             }
@@ -220,7 +220,6 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                         // Generate the next map with current_level and max_level
                         struct Map new_map = generate_map(current_room, current_level, max_level);
                         *game_map = new_map;
-                        *character_location = new_map.initial_position;
 
                         add_game_message(&message_queue, "Level up! Welcome to Level.", 3); // COLOR_PAIR_WEAPONS
                         // Optionally, append the level number to the message
@@ -248,12 +247,12 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                     // Check for traps
                     for (int i = 0; i < game_map->trap_count; i++) {
                         Trap* trap = &game_map->traps[i];
-                        if (trap->location.x == character_location->x && 
-                            trap->location.y == character_location->y) {
+                        if (trap->location.x == player->location.x && 
+                            trap->location.y == player->location.y) {
                             if (!trap->triggered) {
                                 trap->triggered = true;
-                                game_map->grid[character_location->y][character_location->x] = TRAP_SYMBOL;
-                                player.hitpoints -= 10;
+                                game_map->grid[player->location.y][player->location.x] = TRAP_SYMBOL;
+                                player->hitpoints -= 10;
                                 add_game_message(&message_queue, "You triggered a trap! Hitpoints decreased.", 4); // COLOR_PAIR_TRAPS
                             }
                             break;
@@ -272,7 +271,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             case 'a':
             case 'A':
                 if (player->equipped_weapon != -1) {
-                    Weapon* w = &player.weapons[player->equipped_weapon];
+                    Weapon* w = &player->weapons[player->equipped_weapon];
                     if (w->type == MELEE) {
                         // Melee usage
                         use_melee_weapon(player, w, game_map, &message_queue);
@@ -287,20 +286,20 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             case 'i':
             case 'I':
                 // Open the weapon inventory menu
-                open_weapon_inventory_menu(&player, game_map, &message_queue);
+                open_weapon_inventory_menu(player, game_map, &message_queue);
                 break;
 
             case ' ': // SPACE
                 // Use or shoot the currently equipped weapon
-                if (player.equipped_weapon != -1) {
-                    Weapon* w = &player.weapons[player.equipped_weapon];
+                if (player->equipped_weapon != -1) {
+                    Weapon* w = &player->weapons[player->equipped_weapon];
                     if (w->type == MELEE) {
                         // Melee usage
-                        use_melee_weapon(&player, w, game_map, &message_queue);
+                        use_melee_weapon(player, w, game_map, &message_queue);
                     } else {
                         // Ranged usage - ask user for direction every time
                         ask_ranged_direction(&last_dx, &last_dy, w->name);
-                        throw_ranged_weapon_with_drop(&player, w, game_map, &message_queue,
+                        throw_ranged_weapon_with_drop(player, w, game_map, &message_queue,
                                                     last_dx, last_dy);
                     }
                 }
@@ -585,7 +584,7 @@ struct Map generate_map(struct Room* previous_room, int current_level, int max_l
 
         // Initialize player attributes
     Player player;
-    initialize_player(&player, game_map->initial_position);
+    initialize_player(&player, map.initial_position);
 
     add_food(&map, &player);
     add_gold(&map, &player);

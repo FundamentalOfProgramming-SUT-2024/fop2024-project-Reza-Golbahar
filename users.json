@@ -4,59 +4,59 @@
     "password": "Lord453",
     "email": "s@g.c",
     "score": "0",
-    "gold_collected": "39",
+    "gold_collected": "112",
     "difficulty": 0,
     "color": "",
     "song": 0,
     "games_played": 0,
-    "days_since_first_game": 20120
+    "days_since_first_game": 20121
   },
   {
     "username": "Reza2",
     "password": "Lord453",
     "email": "s@g.c",
-    "score": "5",
+    "score": "0",
     "gold_collected": "0",
     "difficulty": 0,
     "color": "",
     "song": 0,
     "games_played": 0,
-    "days_since_first_game": 20120
-  }
-]
-,
+    "days_since_first_game": 20121
+  },
   {
     "username": "Reza8",
     "password": "Lord453",
     "email": "s@g.c",
     "score": "0",
     "gold_collected": "0",
-    "difficulty": 1,
-    "color": "White",
+    "difficulty": 0,
+    "color": "",
+    "song": 0,
     "games_played": 0,
-    "days_since_first_game": 0
-  }
-,
+    "days_since_first_game": 20121
+  },
   {
     "username": "Reza9",
-    "password": "Dp6>DH+IzX<2gG85rhXMYgw6?A2=F&f?56438<75UUJk186!_{&Z7CulVALX7=u6=k<=fi3SC#fY1tx:P0$kH*9q>;>Q1fX:5p0z",
+    "password": "Dp6>DH+IzX<2gG85rhXMYgw6?A2=F&f?56438<75UUJk186!_{&Z7CulVALX7=u6=k<=fi3SC#fY1tx:P0$kH*9q>;>Q1fX:5p0zs@g.c",
     "email": "s@g.c",
     "score": "0",
     "gold_collected": "0",
-    "difficulty": 1,
-    "color": "White",
+    "difficulty": 0,
+    "color": "",
+    "song": 0,
     "games_played": 0,
-    "days_since_first_game": 0
-  }
-,
+    "days_since_first_game": 20121
+  },
   {
     "username": "Reza10",
     "password": "Lord453",
     "email": "s@g.c",
     "score": "0",
     "gold_collected": "0",
-    "difficulty": 1,
-    "color": "White",
+    "difficulty": 0,
+    "color": "",
+    "song": 0,
     "games_played": 0,
-    "days_since_first_game": 0
+    "days_since_first_game": 20121
   }
+]

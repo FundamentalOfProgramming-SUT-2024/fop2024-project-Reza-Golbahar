@@ -504,37 +504,13 @@ void pre_game_menu(struct UserManager* manager) {
         int choice = getch();
         
         switch (choice) {
-            case '1': {
-                // Generate the map
-                struct Map new_map = generate_map(NULL,1 ,4);
-                struct Point start_pos = new_map.initial_position;
-
-                // Create a visibility array for the map (all tiles are initially unexplored)
-                bool visible[MAP_HEIGHT][MAP_WIDTH] = {0}; // All tiles hidden initially
-                visible[start_pos.y][start_pos.x] = 1; // Make the starting position visible
-
-                // Print the map with the starting location and visibility
-                print_map(&new_map, visible, start_pos, manager);
-
-                // Start the game
-                struct SavedGame saved;
-                if (load_saved_game(manager, &saved)) {
-                    // Overwrite current map and player with saved data
-                    struct Map loaded_map = saved.game_map;
-                    Player loaded_player = saved.player;
-                    int loaded_level = saved.current_level;
-
-                    // Now call play_game with these:
-                    play_game(manager, &loaded_map, &loaded_player.location, loaded_player.score);
-                    }
+            case '1':
+                // “New Game” => generate new dungeon from scratch
+                start_new_game(manager);
                 break;
-            }
             case '2':
-                //list_saved_games(manager);
-                struct SavedGame saved;
-                if (load_saved_game(manager, &saved)) {
-                    //play_game(manager, &saved.game_map, &saved.character_location, saved.score);
-                }
+                // “Continue Game” => show list of saved games for current user
+                continue_game(manager);
                 break;
             case '3':
                 print_scoreboard(manager);
@@ -562,6 +538,32 @@ void pre_game_menu(struct UserManager* manager) {
                 getch();
                 break;
         }
+    }
+}
+
+void start_new_game(struct UserManager* manager) {
+    // We'll create a brand new Map, brand new Player
+    struct Map game_map = generate_map(NULL, 1, 4);
+    // Make a fresh Player
+    Player player;
+    initialize_player(&player, game_map.initial_position);
+    // Now start play
+    play_game(manager, &game_map, &player, player.score);
+}
+
+void continue_game(struct UserManager* manager) {
+    if(!manager->current_user) {
+        mvprintw(0,0,"Must be logged in to continue a saved game.");
+        getch();
+        return;
+    }
+    // load a SavedGame
+    struct SavedGame loaded;
+    if(load_saved_game(manager, &loaded)) {
+        struct Map game_map = loaded.game_map;
+        Player player = loaded.player;
+        // Continue exactly
+        play_game(manager, &game_map, &player, player.score);
     }
 }
 

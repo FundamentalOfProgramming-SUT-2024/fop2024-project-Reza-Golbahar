@@ -443,6 +443,7 @@ void open_food_inventory_menu(Player* player, struct MessageQueue* message_queue
 // Function Declarations for Gold
 void add_gold(struct Map* map, Player* player);
 void handle_gold_collection(Player* player, struct Map* map, struct MessageQueue* message_queue);
+void initialize_player(Player* player, struct Point start_location);
 
 // Hunger and Health Mechanics
 void update_hunger_and_health(Player* player, struct Map* map, struct MessageQueue* message_queue);
