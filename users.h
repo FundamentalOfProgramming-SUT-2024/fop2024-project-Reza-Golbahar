@@ -55,7 +55,6 @@ void save_users_to_json(struct UserManager* manager);
 bool authenticate_user(struct UserManager* manager, int index, const char* password);
 void print_users(struct UserManager* manager);
 void print_scoreboard(struct UserManager* manager);
-void print_profile(struct UserManager* manager);
 void handle_file_error(const char* operation);
 
 

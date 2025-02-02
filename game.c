@@ -26,6 +26,15 @@ bool hasPassword = false;  // The single definition
 int ancient_key_count = 0;
 int broken_key_count = 0;
 
+time_t last_enchant_drain = 0; // static or global to track intervals
+
+//variables for 'f' movement
+static bool run_mode = false;  // tracks if user pressed 'f' and is waiting for arrow
+static int run_dx = 0, run_dy = 0; 
+
+//variable for 'g' movement
+static bool skipCollectNext = false;
+
 // Initialize a player structure (Modify existing player initialization if necessary)
 void initialize_player(struct UserManager* manager, Player* player, struct Point start_location) {
     player->location = start_location;
@@ -74,6 +83,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
     int food_count = 0;
     int gold_count = 0;
 
+
     game_map->last_hunger_decrease = time(NULL);
     game_map->last_attack_time = time(NULL);
 
@@ -99,11 +109,6 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             update_visibility(game_map, &player->location, visible);
             print_map(game_map, visible, player->location, manager);
         }
-
-        // Render enemies
-        render_enemies(game_map);
-        
-
         // After player movement, check for enemy activation
         for (int i = 0; i < game_map->enemy_count; i++) {
             Enemy* enemy = &game_map->enemies[i];
@@ -129,7 +134,7 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             mvprintw(MAP_HEIGHT + 2, 0, "Level: %d                             Equipped Weapon: None"
                     ,current_level);
         }
-        mvprintw(MAP_HEIGHT + 4, 0, "Controls: Arrow Keys to Move, 'i' - Weapon Inventory, 'e' - General Inventory, 'q' - Quit g-save");
+        mvprintw(MAP_HEIGHT + 4, 0, "Controls: Arrow Keys to Move, 'i' - Weapon Inventory, 'e' - General Inventory, 'q' - Quit,  'z' -save");
         refresh();
 
         // Increase hunger rate over time
@@ -148,6 +153,20 @@ void play_game(struct UserManager* manager, struct Map* game_map,
             hunger_damage_timer++;
         } else {
             hunger_damage_timer = 0; // Reset damage timer if hunger is below threshold
+        }
+
+        Room* current_room = find_room_by_position(game_map, player->location.x, player->location.y);
+        if (current_room && current_room->theme == THEME_ENCHANT) {
+            time_t now = time(NULL);
+            // If at least 1 second passed since last drain
+            if (difftime(now, last_enchant_drain) >= 1.0) {
+                player->hitpoints -= 1;
+                add_game_message(&message_queue, 
+                    "A magical aura drains your life by 1 HP!", 
+                    4 // pick a color pair, e.g. red or cyan
+                );
+                last_enchant_drain = now;
+            }
         }
 
         // Check if hitpoints are zero
@@ -171,9 +190,6 @@ void play_game(struct UserManager* manager, struct Map* game_map,
         // Update hunger rate and health regeneration
         update_hunger_and_health(player, game_map, &message_queue);
 
-        // Update enemies
-        update_enemies(game_map, player, &message_queue);
-
         // Display messages
         draw_messages(&message_queue, 0, MAP_WIDTH+1);
         update_messages(&message_queue);
@@ -183,14 +199,82 @@ void play_game(struct UserManager* manager, struct Map* game_map,
 
         
         int key = getch();
+
+        if (key == 's') {
+            // For each of the 8 neighbors (dx = -1..+1, dy=-1..+1)
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    if (dx == 0 && dy == 0) continue; // skip player's own tile
+                    
+                    int tx = player->location.x + dx;
+                    int ty = player->location.y + dy;
+                    // check bounds
+                    if (tx<0 || tx>=MAP_WIDTH || ty<0 || ty>=MAP_HEIGHT) continue;
+
+                    // if it's SECRET_DOOR_CLOSED => temporarily show SECRET_DOOR_REVEALED?
+                    if (game_map->grid[ty][tx] == SECRET_DOOR_CLOSED) {
+                        game_map->grid[ty][tx] = SECRET_DOOR_REVEALED;
+                        // maybe store a timer or a boolean to revert it back after 1 turn if needed
+                    }
+                    // If there's a hidden trap, you might do something similar 
+                    // if you store them purely in data structure. 
+                    // Or if you already place '^' for triggered traps, 
+                    // maybe you can just let them appear for the moment.
+
+                    // Up to you how you handle "revealing" and then "rehiding."
+                }
+            }
+
+            add_game_message(&message_queue, "You peer intently, revealing adjacent secrets!", 2);
+        }
+
+        if (key == 'g') {
+            skipCollectNext = true;
+            add_game_message(&message_queue, "The next tile you step on won't collect its item.", 2);
+        }
+
+
+        if (!run_mode && key == 'f') {
+            // The next arrow key will set run_mode direction
+            add_game_message(&message_queue, 
+                "Press an arrow key to run continuously in that direction...",
+                2);
+            run_mode = true;
+            continue; // wait for next input
+        }
+        if (run_mode) {
+            // The user pressed 'f' previously, so we expect an arrow key
+            // decide direction
+            switch (key) {
+                case KEY_UP:    run_dx=0;  run_dy=-1; run_mode=false; break;
+                case KEY_DOWN:  run_dx=0;  run_dy=+1; run_mode=false; break;
+                case KEY_LEFT:  run_dx=-1; run_dy=0;  run_mode=false; break;
+                case KEY_RIGHT: run_dx=+1; run_dy=0;  run_mode=false; break;
+                default:
+                    // invalid direction => cancel run_mode
+                    run_mode=false;
+                    break;
+            }
+            if (!run_mode && (run_dx!=0 || run_dy!=0)) {
+                // Now we actually run
+                run_in_direction(player, game_map, run_dx, run_dy);
+            }
+            continue;
+        }
+        
+
         if (key == 'm' || key == 'M') {
             show_map = !show_map;  // Toggle the map visibility flag
             continue;  // Skip the rest of the loop to refresh the display
         }
-        if (key=='g'){
+
+
+        else if (key=='z'){
             if (manager->current_user)
                 save_current_game(manager, game_map, player, current_level);
         }
+
+
         switch (key) {
             case KEY_UP:
             case KEY_DOWN:
@@ -306,8 +390,8 @@ void play_game(struct UserManager* manager, struct Map* game_map,
                 }
                 break;
 
-            case 's':
-            case 'S':
+            case 'x':
+            case 'X':
                 // Open spell inventory menu
                 open_spell_inventory_menu(game_map, player, &message_queue);
                 break;
@@ -639,13 +723,13 @@ struct Map generate_map(struct UserManager* manager, struct Room* previous_room,
     add_ancient_key(&map);
 
     // Place stairs (if applicable)
-    add_enemies(&map, current_level);
 
     // Set initial player position for the first map
     if (previous_room == NULL && map.room_count > 0) {
         map.initial_position.x = map.rooms[0].left_wall + map.rooms[0].width / 2;
         map.initial_position.y = map.rooms[0].top_wall + map.rooms[0].height / 2;
     }
+    add_enemies(&map, current_level);
 
     place_stairs(&map);
 
@@ -1207,14 +1291,14 @@ void print_map(struct Map* game_map,
             // Apply color and print based on tile type
             switch(tile) {
                 case 'T':  // Normal Food
-                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_NORMAL));
+                    attron(COLOR_PAIR(2));
                     mvaddch(y, x, tile);
-                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_NORMAL));
+                    attroff(COLOR_PAIR(2));
                     break;
-                case 'G':  // Great Food
-                    attron(COLOR_PAIR(COLOR_PAIR_ROOM_ENCHANT));
+                case 'A':  // Great Food
+                    attron(COLOR_PAIR(2));
                     mvaddch(y, x, tile);
-                    attroff(COLOR_PAIR(COLOR_PAIR_ROOM_ENCHANT));
+                    attroff(COLOR_PAIR(2));
                     break;
                 case 'M':  // Magical Food
                     attron(COLOR_PAIR(COLOR_PAIR_ROOM_TREASURE));
@@ -1246,12 +1330,31 @@ void print_map(struct Map* game_map,
                 //     break;
 
 
-                case ENEMY_FIRE_MONSTER:
-                    attron(COLOR_PAIR(16)); // Define a new color pair for enemies
-                    mvaddch(y, x, ENEMY_FIRE_MONSTER);
-                    attroff(COLOR_PAIR(16));
-                    break;
-
+                    case 'F':
+                        attron(COLOR_PAIR(16));
+                        mvaddch(y, x, 'F');
+                        attroff(COLOR_PAIR(16));
+                        break;
+                    case 'G':
+                        attron(COLOR_PAIR(16));
+                        mvaddch(y, x, 'G');
+                        attroff(COLOR_PAIR(16));
+                        break;
+                    case 'D':
+                        attron(COLOR_PAIR(16));
+                        mvaddch(y, x, 'D');
+                        attroff(COLOR_PAIR(16));
+                        break;
+                    case 'S':
+                        attron(COLOR_PAIR(16));
+                        mvaddch(y, x, 'S');
+                        attroff(COLOR_PAIR(16));
+                        break;
+                    case 'U':
+                        attron(COLOR_PAIR(16));
+                        mvaddch(y, x, 'U');
+                        attroff(COLOR_PAIR(16));
+                        break;
                 
                 case DOOR_PASSWORD:
                     {
@@ -1709,15 +1812,21 @@ void move_character(Player* player, int key, struct Map* game_map, int* hitpoint
         //    OR password door with hasPassword==true)
         player->location = new_location;
 
-        
-        handle_weapon_pickup(player, game_map, new_location, message_queue);
+        if (!skipCollectNext) {
 
-        handle_spell_pickup(player, game_map, new_location, message_queue);
+            handle_weapon_pickup(player, game_map, new_location, message_queue);
 
-        
-        collect_food(player, game_map, message_queue);
-        handle_gold_collection(player, game_map, message_queue);
+            handle_spell_pickup(player, game_map, new_location, message_queue);
 
+
+            collect_food(player, game_map, message_queue);
+            handle_gold_collection(player, game_map, message_queue);
+        }
+
+            else {
+                // We skip it this time
+                skipCollectNext = false; // reset so next tile collects again
+            }
 
         // -----------------------------------------------------------
         // 3) Trap logic: If we just moved onto a trap location, trigger damage
@@ -1771,6 +1880,7 @@ void finalize_victory(struct UserManager* manager, Player* player) {
     if (manager->current_user) {
         manager->current_user->score += player->score; 
         manager->current_user->gold  += player->gold_count;
+        manager->current_user->games_completed++;
         save_users_to_json(manager);
     }
 
@@ -2996,7 +3106,6 @@ void use_spell(Player* player, struct Map* game_map, struct MessageQueue* messag
     getch();
 }
 
-
 void add_enemies(struct Map* map, int current_level) {
     int enemies_to_add;
     
@@ -3020,11 +3129,16 @@ void add_enemies(struct Map* map, int current_level) {
             int enemy_type_rand = rand() % 5;
 
             switch (enemy_type_rand) {
-                case 0: enemy.type = ENEMY_DEMON; break;
-                case 1: enemy.type = ENEMY_FIRE_BREATHING_MONSTER; break;
-                case 2: enemy.type = ENEMY_GIANT; break;
-                case 3: enemy.type = ENEMY_SNAKE; break;
-                case 4: enemy.type = ENEMY_UNDEAD; break;
+                case 0: enemy.symbol = 'D'; enemy.type = ENEMY_DEMON; 
+                enemy.hp = 5; enemy.damage = 5;  break;
+                case 1: enemy.symbol = 'F'; enemy.type = ENEMY_FIRE_BREATHING_MONSTER; 
+                enemy.hp = 10; enemy.damage = 10;  break;
+                case 2: enemy.symbol = 'G'; enemy.type = ENEMY_GIANT; 
+                enemy.hp = 15; enemy.damage = 15;  break;
+                case 3: enemy.symbol = 'S'; enemy.type = ENEMY_SNAKE; 
+                enemy.hp = 20; enemy.damage = 20;  break;
+                case 4: enemy.symbol = 'S'; enemy.type = ENEMY_UNDEAD; 
+                enemy.hp = 30; enemy.damage = 30;  break;
             }
 
 
@@ -3035,47 +3149,8 @@ void add_enemies(struct Map* map, int current_level) {
             enemy.adjacent_attack = false;
 
             map->enemies[map->enemy_count++] = enemy;
-            map->grid[y][x] = enemy.type;
-        }
-    }
-}
-
-void render_enemies(struct Map* map) {
-    for (int i = 0; i < map->enemy_count; i++) {
-        Enemy* enemy = &map->enemies[i];
-        
-        // Only render active enemies
-        if (enemy->active) {
-            // Check if the enemy is still in the map
-            char symbol = enemy->type;
-            if (symbol == ENEMY_FIRE_MONSTER || symbol == ENEMY_DEMON || symbol == ENEMY_GIANT ||
-                symbol == ENEMY_SNAKE || symbol == ENEMY_UNDEAD) {
-                
-                // Determine color based on enemy type
-                int color_pair = 16; // Default enemy color
-                switch(enemy->type) {
-                    case ENEMY_DEMON:
-                        color_pair = 17; // Define in your color initialization
-                        break;
-                    case ENEMY_GIANT:
-                        color_pair = 18;
-                        break;
-                    case ENEMY_SNAKE:
-                        color_pair = 19;
-                        break;
-                    case ENEMY_UNDEAD:
-                        color_pair = 20;
-                        break;
-                    // Add cases as needed
-                    default:
-                        color_pair = 16;
-                        break;
-                }
-
-                attron(COLOR_PAIR(color_pair));
-                mvaddch(enemy->position.y, enemy->position.x, symbol);
-                attroff(COLOR_PAIR(color_pair));
-            }
+            map->grid[y][x] = enemy.symbol;
+            map->enemy_count++;
         }
     }
 }
@@ -3085,39 +3160,35 @@ bool is_enemy_in_same_room(Player* player, Enemy* enemy, struct Map* map) {
 }
 
 void update_enemies(struct Map* map, Player* player, struct MessageQueue* message_queue) {
+    // For each enemy
     for (int i = 0; i < map->enemy_count; i++) {
-        Enemy* enemy = &map->enemies[i];
-        if ( is_adjacent(player->location, enemy->position)) {
-            enemy->active = true;
-            enemy->chasing = true;
-            char msg[100];
-            snprintf(msg, sizeof(msg), "A %c is activated with %d HP!", enemy->type, enemy->hp);
-            add_game_message(message_queue, msg, 2);
-        }
-
-        if (enemy->chasing) {
-            move_enemy_towards_player(enemy, player, map);
-
-            if (enemy->type == 'G' || enemy->type == 'U') {
-                int distance = manhattanDistance(player->location.x, player->location.y, enemy->position.x, enemy->position.y);
-                if (distance > 5) {
-                    enemy->chasing = false;
-                }
-            } else if (enemy->type == 'D' || enemy->type == 'F') {
-                if (!is_enemy_in_same_room(player, enemy, map)) {
-                    enemy->chasing = false;
-                }
+        Enemy* e = &map->enemies[i];
+        
+        // 1) If not active, check if it should become active
+        //    e.g., if same room or if close enough to see the player
+        //    Simplest: if the player is in the same room
+        if (!e->active) {
+            Room* enemy_room = find_room_by_position(map, e->position.x, e->position.y);
+            Room* player_room = find_room_by_position(map, player->location.x, player->location.y);
+            if (enemy_room && enemy_room == player_room) {
+                e->active = true;
+                // msg_queue => "An enemy sees you!"
             }
         }
 
-        if (is_adjacent(player->location, enemy->position)) {
-            player->hitpoints -= enemy->hp;
-            map->last_attack_time = time(NULL);
-            char attack_msg[100];
-            snprintf(attack_msg, sizeof(attack_msg), "A %c attacked you! Damage: %d", enemy->type, enemy->hp);
-            add_game_message(message_queue, attack_msg, 7);
-            if (player->hitpoints <= 0) {
-                add_game_message(message_queue, "Game Over! You were defeated.", 7);
+        // 2) If e->active, check if the enemy can attack
+        if (e->active) {
+            int distance = manhattanDistance(e->position.x, e->position.y, 
+                                             player->location.x, player->location.y);
+            if (distance == 1) {
+                // Attack instead of moving
+                add_game_message(message_queue, "Enemy Dealt you damage!", 7);
+                int damage = e->damage; // or some formula
+                player->hitpoints -= damage;
+                // msg_queue => "Enemy attacked you for X damage"
+            } else {
+                // Move 1 tile closer
+                move_enemy_towards_player(e, player, map);
             }
         }
     }
@@ -3127,17 +3198,27 @@ void move_enemy_towards_player(Enemy* enemy, Player* player, struct Map* map) {
     int dx = player->location.x - enemy->position.x;
     int dy = player->location.y - enemy->position.y;
 
+    // Normalize to get direction -1, 0, or 1
     if (dx != 0) dx = dx / abs(dx);
     if (dy != 0) dy = dy / abs(dy);
 
+    // Next tile
     int new_x = enemy->position.x + dx;
     int new_y = enemy->position.y + dy;
 
-    if (new_x >= 0 && new_x < MAP_WIDTH && new_y >= 0 && new_y < MAP_HEIGHT && map->grid[new_y][new_x] == FLOOR) {
+    // If that next tile is floor or corridor (and not blocked by walls), move enemy
+    if (map->grid[new_y][new_x] == FLOOR || 
+        map->grid[new_y][new_x] == CORRIDOR /* etc. */) 
+    {
+        // Clear old position => set it to floor
         map->grid[enemy->position.y][enemy->position.x] = FLOOR;
+
+        // Update the enemy
         enemy->position.x = new_x;
         enemy->position.y = new_y;
-        map->grid[new_y][new_x] = enemy->type;
+
+        // Print the enemy symbol in new location
+        map->grid[new_y][new_x] = enemy->symbol;
     }
 }
 
@@ -3277,7 +3358,6 @@ int find_last_food_of_type(Player* player, FoodType type) {
     return index;
 }
 
-
 void use_melee_weapon(Player* player, Weapon* weapon, struct Map* map, struct MessageQueue* msg_queue) {
     // Damages all adjacent tiles (8 directions)
     for (int dx = -1; dx <= 1; dx++) {
@@ -3406,5 +3486,35 @@ void throw_ranged_weapon_with_drop(
         add_game_message(message_queue,
             "Your projectile fell to the ground with 1 ammo remaining.",
             2);
+    }
+}
+
+void run_in_direction(Player* player, struct Map* map, int dx, int dy) {
+    while (true) {
+        int nx = player->location.x + dx;
+        int ny = player->location.y + dy;
+
+        // Check bounds
+        if (nx<0 || nx>=MAP_WIDTH || ny<0 || ny>=MAP_HEIGHT) 
+            break; // stop if out of bounds
+
+        // If it's not floor, corridor, or a passable tile, stop
+        char tile = map->grid[ny][nx];
+        if (tile != FLOOR && tile != CORRIDOR) {
+            // You might allow DOOR or TRAP or etc. - up to you
+            break;
+        }
+
+        // Move the player
+        player->location.x = nx;
+        player->location.y = ny;
+        
+        // Possibly call updates: check traps, enemies, etc.
+        // If you want the user to see each step, you can break the loop 
+        // or do a partial update. For an instant "teleport," keep going
+
+        // If you want to handle “skip item” or so, check that logic
+        // e.g. if skipCollect is true, we do not pick items
+        // but once we step on a tile, skipCollect can go false
     }
 }

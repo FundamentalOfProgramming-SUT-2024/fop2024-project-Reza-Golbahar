@@ -36,9 +36,12 @@
 #define COLOR_PAIR_SPEED 11
 #define COLOR_PAIR_HEALTH 12
 
-#define ENEMY_FIRE_MONSTER 'F'
+#define ENEMY_FIRE_MONSTER     'F'
+#define ENEMY_DEMON_SYM        'D'
+#define ENEMY_GIANT_SYM        'G'
+#define ENEMY_SNAKE_SYM        'S'
+#define ENEMY_UNDEAD_SYM       'U'
 #define MAX_ENEMIES 20           // Maximum number of enemies in the game
-#define ENEMY_HP_FIRE_MONSTER 10 // HP for Fire Breathing Monster
 
 
 // -- Secret doors --
@@ -76,7 +79,6 @@ static const char *ARROW_SYMBOL      = "\u27B3";   // ➳
 #define MAX_SPELLS 10
 #define MAX_GOLDS           100
 #define MAX_FOOD_COUNT 100
-
 
 
 // Map constants
@@ -161,7 +163,9 @@ typedef struct Gold {
 typedef struct Enemy {
     EnemyType type;         // Type of the enemy
     struct Point position;  // Current position on the map
-    int hp;                 // Hit Points
+    int hp;
+    char symbol;
+    int damage;             // Hit Points
     bool active;            // Whether the enemy is active (chasing the player)
     bool chasing;           // Flag to indicate if the enemy is chasing the player
     bool adjacent_attack;   // Flag to check if the player is adjacent to the enemy
@@ -395,6 +399,7 @@ void add_game_message(struct MessageQueue* queue, const char* text, int color_pa
 void update_messages(struct MessageQueue* queue);
 void draw_messages(struct MessageQueue* queue, int start_y, int start_x);
 void update_password_display();
+void run_in_direction(Player* player, struct Map* map, int dx, int dy);
 
 // Map display
 void print_map(struct Map* game_map, bool visible[MAP_HEIGHT][MAP_WIDTH], struct Point character_location, struct UserManager* manager);
@@ -420,7 +425,6 @@ void add_spells_to_room(struct Map* map, struct Room* room, int spell_count);
 
 // Function Declarations for Enemies
 void add_enemies(struct Map* map, int current_level);
-void render_enemies(struct Map* map);
 void update_enemies(struct Map* map, Player* player, struct MessageQueue* message_queue);
 void move_enemy_towards_player(Enemy* enemy, Player* player, struct Map* map);
 bool is_enemy_in_same_room(Player* player, Enemy* enemy, struct Map* map);

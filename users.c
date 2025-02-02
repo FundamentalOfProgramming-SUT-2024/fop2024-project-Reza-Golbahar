@@ -109,46 +109,71 @@ void load_users_from_json(struct UserManager* manager) {
         if (strstr(line, "\"username\":") != NULL) {
             struct User* user = &manager->users[manager->user_count];
 
-            // Parse the JSON data for each user
+            // Parse username from *this* line
             sscanf(line, " \"username\": \"%[^\"]\",", user->username);
+
+            // Next line => password
             fgets(line, sizeof(line), file);
             sscanf(line, " \"password\": \"%[^\"]\",", user->password);
+
+            // Next line => email
             fgets(line, sizeof(line), file);
             sscanf(line, " \"email\": \"%[^\"]\",", user->email);
 
-            // Parse score and gold_collected
-            char score_str[10];
+            // Next line => "score"
+            fgets(line, sizeof(line), file);
+            char score_str[16];
             sscanf(line, " \"score\": \"%[^\"]\"", score_str);
             user->score = atoi(score_str);
 
-            fgets(line, sizeof(line), file);  // Skip to gold_collected line
-            char gold_str[10];
+            // Next line => "gold_collected"
+            fgets(line, sizeof(line), file);
+            char gold_str[16];
             sscanf(line, " \"gold_collected\": \"%[^\"]\"", gold_str);
             user->gold = atoi(gold_str);
 
-            // Load other settings
-            fgets(line, sizeof(line), file);  // Skip to difficulty line
+            // Next line => difficulty
+            fgets(line, sizeof(line), file);
             sscanf(line, " \"difficulty\": %d,", &user->difficulty);
 
-            fgets(line, sizeof(line), file);  // Skip to color line
+            // Next line => color
+            fgets(line, sizeof(line), file);
             sscanf(line, " \"color\": \"%[^\"]\",", user->character_color);
 
-            fgets(line, sizeof(line), file);  // Skip to song line
+            // Next line => song
+            fgets(line, sizeof(line), file);
             sscanf(line, " \"song\": %d,", &user->song);
 
-            fgets(line, sizeof(line), file);  // Skip to games_played line
+            // Next line => games_played
+            fgets(line, sizeof(line), file);
             sscanf(line, " \"games_played\": %d,", &user->games_completed);
 
-            fgets(line, sizeof(line), file);  // Skip to days_since_first_game line
-            sscanf(line, " \"days_since_first_game\": %d", &user->days_since_first_game);
+            long first_t, last_t;
+            fgets(line, sizeof(line), file);
+            sscanf(line, " \"first_game_time\": %ld,", &first_t);
+            user->first_game_time = (time_t)first_t;
 
-            // Store username for future lookups
-            strncpy(manager->usernames[manager->user_count], user->username, MAX_STRING_LEN - 1);
+            fgets(line, sizeof(line), file);
+            sscanf(line, " \"last_game_time\": %ld,", &last_t);
+            user->last_game_time = (time_t)last_t;
+
+            // Next line => days_since_first_game
+            // fgets(line, sizeof(line), file);
+            // sscanf(line, " \"days_since_first_game\": %d", &user->days_since_first_game);
+
+            // *Now* we've read 10 lines total. 
+            // If your JSON has a trailing "}" line, you might do one more fgets, or 
+            // it might be read at the top of the next iteration. It's up to you.
+
+            // Store the username in manager->usernames
+            strncpy(manager->usernames[manager->user_count], 
+                    user->username, MAX_STRING_LEN - 1);
             manager->usernames[manager->user_count][MAX_STRING_LEN - 1] = '\0';
 
             manager->user_count++;
         }
     }
+
     fclose(file);
 }
 
@@ -183,7 +208,9 @@ void save_users_to_json(struct UserManager* manager) {
         fprintf(file, "    \"color\": \"%s\",\n", user->character_color);
         fprintf(file, "    \"song\": %d,\n", user->song);
         fprintf(file, "    \"games_played\": %d,\n", user->games_completed);
-        fprintf(file, "    \"days_since_first_game\": %d\n", user->days_since_first_game);  // Save the days since first game
+        fprintf(file, "    \"first_game_time\": %ld,\n", (long)user->first_game_time);
+        fprintf(file, "    \"last_game_time\": %ld,\n", (long)user->last_game_time);
+        //fprintf(file, "    \"days_since_first_game\": %d\n", user->days_since_first_game);  // Save the days since first game
 
         fprintf(file, "  }%s\n", i < manager->user_count - 1 ? "," : "");
     }
@@ -344,42 +371,4 @@ void print_scoreboard(struct UserManager* manager) {
                 break;
         }
     }
-}
-
-
-void print_profile(struct UserManager* manager) {
-    if (manager->current_user == NULL) {
-        printw("No user is currently logged in.\n");
-        refresh();
-        getch();
-        return;
-    }
-
-    clear();
-    int line_num = 0;  // Add this line
-    // Print user profile
-    mvprintw(0, 0, "User Profile");
-    mvprintw(2, 0, "----------------------------------------");
-    mvprintw(3, 0, "Username: %s", manager->current_user->username);
-    mvprintw(4, 0, "Email: %s", manager->current_user->email);
-    mvprintw(5, 0, "Current Score: %d", manager->current_user->score);
-    mvprintw(6, 0, "----------------------------------------");
-    
-    line_num = 7;  // Start settings from line 7
-    // Load game settings if they exist
-    FILE *settings_file = fopen("load.json", "r");
-    if (settings_file != NULL) {
-        mvprintw(line_num++, 0, "Current Settings:");
-        char settings_line[256];
-        while (fgets(settings_line, sizeof(settings_line), settings_file)) {
-            mvprintw(line_num++, 0, "%s", settings_line);
-        }
-        fclose(settings_file);
-    } else {
-        handle_file_error("open settings");
-    }
-
-    mvprintw(line_num + 1, 0, "Press any key to return...");
-    refresh();
-    getch();
 }

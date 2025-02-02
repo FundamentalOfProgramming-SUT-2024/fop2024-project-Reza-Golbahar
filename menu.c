@@ -521,8 +521,8 @@ void pre_game_menu(struct UserManager* manager) {
             case '5':
                 if (manager->current_user) {
                     // Call the print_user_profile function to display the profile of the current user
-                    int user_index = manager->current_user - manager->users; // Calculate the user index
-                    print_user_profile(manager, user_index);
+                    //int user_index = manager->current_user - manager->users; // Calculate the user index
+                    print_user_profile(manager);
                 } else {
                     mvprintw(13, 0, "No user logged in. Press any key to continue...");
                     refresh();
@@ -567,45 +567,42 @@ void continue_game(struct UserManager* manager) {
     }
 }
 
-void print_user_profile(struct UserManager *manager, int user_index) {
+void print_user_profile(struct UserManager *manager) {
     clear(); // Clear the screen before displaying the profile
-
-    struct User *user = &manager->users[user_index];
-
     printw("User Profile:\n\n");
 
     // Display username
-    printw("Username: %s\n", user->username);
+    printw("Username: %s\n", manager->current_user->username);
     
     // Display email
-    printw("Email: %s\n", user->email);
+    printw("Email: %s\n", manager->current_user->email);
     
     // Display score
-    printw("Score: %d\n", user->score);
+    printw("Score: %d\n", manager->current_user->score);
     
     // Display number of games completed
-    printw("Games Completed: %d\n", user->games_completed);
+    printw("Games Completed: %d\n", manager->current_user->games_completed);
     
     // Display gold collected
-    printw("Gold Collected: %d\n", user->gold);
+    printw("Gold Collected: %d\n", manager->current_user->gold);
     
     // Display difficulty
-    printw("Difficulty: %d\n", user->difficulty);
+    printw("Difficulty: %d\n", manager->current_user->difficulty);
     
     // Display song
-    printw("Song: %d\n", user->song);
+    printw("Song: %d\n", manager->current_user->song);
     
     // Display character color
-    printw("Character Color: %s\n", user->character_color);
+    printw("Character Color: %s\n", manager->current_user->character_color);
     
     // Display days since first game
     time_t now = time(NULL);
-    double seconds_since_first_game = difftime(now, user->first_game_time);
+    double seconds_since_first_game = difftime(now, manager->current_user->first_game_time);
     int days_since_first_game = seconds_since_first_game / (60 * 60 * 24);
     printw("Days Since First Game: %d\n", days_since_first_game);
 
     // Display last game time
-    struct tm *last_game_time = localtime(&user->last_game_time);
+    struct tm *last_game_time = localtime(&manager->current_user->last_game_time);
     printw("Last Game Time: %s", asctime(last_game_time));
 
     printw("\nPress any key to return...");
